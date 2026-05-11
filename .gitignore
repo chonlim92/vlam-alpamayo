@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.alpamayo_venv/
+venv/
+env/
+
+# Environment variables (keep template, ignore local overrides)
+config/.env.local
+config/.env
+.env
+.env.local
+
+# Output files
+output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model weights / large files
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Jupyter
+.ipynb_checkpoints/
