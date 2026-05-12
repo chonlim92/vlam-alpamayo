@@ -150,43 +150,50 @@ table a { color: #58a6ff !important; }
 /* ── Slider accent ───────────────────────────────────────── */
 .compact-slider input[type=range] { accent-color: #76b900 !important; }
 
-/* ── Dropdown & Radio — dark styling ─────────────────────── */
-.dark .gr-dropdown, .dark .gr-radio,
-.gradio-container .gr-dropdown, .gradio-container .gr-radio {
-    background: var(--neutral-800) !important;
+/* ── Dropdown — dark styling ──────────────────────────────── */
+.dark .gr-dropdown, .gradio-container .gr-dropdown {
+    background: transparent !important;
     border-color: var(--neutral-600) !important;
 }
 .dark select, .gradio-container select {
-    background: var(--neutral-800) !important;
+    background: transparent !important;
     color: var(--neutral-200) !important;
     border-color: var(--neutral-600) !important;
 }
-/* Radio button items — force dark background, no white/light grey anywhere */
+/* ── Radio button — fully transparent, no background color ── */
+.gradio-container .gr-radio,
+.gradio-container .gr-radio .wrap,
+.gradio-container .gr-radio label,
+.gradio-container [role="radiogroup"],
+.gradio-container [role="radiogroup"] label,
+.gradio-container [role="radiogroup"] > *,
+.gradio-container [data-testid="radio"],
+.gradio-container [data-testid="radio"] label,
+.gradio-container [data-testid="radio"] > div,
 .gradio-container .wrap input[type="radio"] + label,
 .gradio-container label.svelte-1qxm7ko,
-.gradio-container span.svelte-1qxm7ko,
-.gradio-container .gr-radio label,
-.gradio-container .gr-radio .wrap label,
-.gradio-container [data-testid="radio"] label,
-.gradio-container [role="radiogroup"] label,
-.gradio-container [role="radiogroup"] > label,
-.gradio-container .gr-radio .wrap,
-.gradio-container .gr-form .wrap {
-    background: var(--neutral-800) !important;
-    background-color: var(--neutral-800) !important;
+.gradio-container span.svelte-1qxm7ko {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     color: var(--neutral-200) !important;
-    border-color: var(--neutral-600) !important;
 }
-/* Radio selected state */
+/* Radio selected state — just text color change, no background */
 .gradio-container input[type="radio"]:checked + label,
 .gradio-container .selected,
 .gradio-container [role="radiogroup"] label.selected,
 .gradio-container [role="radiogroup"] label[data-selected],
 .gradio-container [role="radiogroup"] label[aria-checked="true"] {
-    background: rgba(118,185,0,0.2) !important;
-    background-color: rgba(118,185,0,0.2) !important;
-    border-color: #76b900 !important;
-    color: #d4e8b0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    color: #76b900 !important;
+    font-weight: 700 !important;
+}
+/* Radio circle accent */
+.gradio-container input[type="radio"] {
+    accent-color: #76b900 !important;
 }
 /* Kill any white/light backgrounds on form groups and wrappers */
 .gradio-container .gr-group,
@@ -280,35 +287,7 @@ table a { color: #58a6ff !important; }
     color: #c8e6a0 !important;
 }
 
-/* ── Radio button — fix white box on unselected option ──── */
-.gradio-container [role="radiogroup"] label,
-.gradio-container [role="radiogroup"] > div,
-.gradio-container [role="radiogroup"] > div > label,
-.gradio-container .gr-radio label,
-.gradio-container .gr-radio > div,
-.gradio-container input[type="radio"] + span,
-.gradio-container input[type="radio"] ~ div,
-.gradio-container [data-testid="radio"] > div,
-.gradio-container [data-testid="radio"] label {
-    background: var(--neutral-800) !important;
-    background-color: var(--neutral-800) !important;
-    border-color: var(--neutral-600) !important;
-    color: var(--neutral-200) !important;
-}
-/* Unselected radio circle — dark */
-.gradio-container input[type="radio"] {
-    accent-color: #76b900 !important;
-    background: var(--neutral-800) !important;
-    border-color: var(--neutral-500) !important;
-}
-/* Any remaining white/light containers in radio groups */
-.gradio-container .gr-radio .wrap,
-.gradio-container .gr-radio .wrap > *,
-.gradio-container [role="radiogroup"] .wrap,
-.gradio-container [role="radiogroup"] > * {
-    background: var(--neutral-800) !important;
-    background-color: var(--neutral-800) !important;
-}
+
 """
 
 # ── Global state ──────────────────────────────────────────────────────────────
