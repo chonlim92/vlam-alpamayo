@@ -4,6 +4,21 @@
 
 An application for autonomous driving reasoning and explanation using NVIDIA's Alpamayo Vision-Language-Action (VLA) models. Provides both a **CLI** and a **web GUI** (Gradio) to run Chain-of-Causation reasoning and trajectory prediction on driving scenes.
 
+<p align="center">
+  <img src="docs/images/sample_output.gif" alt="Sample output — annotated driving video with trajectory, CoC reasoning, speed & steering" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/images/VLAM_GUI.jpg" alt="VLAM-Alpamayo GUI — Reasoning tab" width="720">
+</p>
+
+<details>
+<summary>Visual QA tab</summary>
+<p align="center">
+  <img src="docs/images/VQA_GUI.jpg" alt="VLAM-Alpamayo GUI — Visual QA tab" width="720">
+</p>
+</details>
+
 ## Supported Models
 
 | Model | Key | Description |
@@ -233,31 +248,6 @@ The Gradio web interface provides a single-page layout with:
   - Timeline progress bar
 - **Trajectory (BEV)** — Zoomable, full-screen capable Bird's-Eye-View plot showing predicted vs GT trajectories with ADE/FDE text
 - **Metrics** — minADE, minFDE, plus derived speed and steering statistics
-
-### Screenshots
-
-**Reasoning Tab:**
-
-![VLAM-Alpamayo GUI — Reasoning](docs/images/VLAM_GUI.jpg)
-
-**Visual QA Tab:**
-
-![VLAM-Alpamayo GUI — Visual QA](docs/images/VQA_GUI.jpg)
-
-**Sample Output Video:**
-
-See [docs/images/sample_output.mp4](docs/images/sample_output.mp4) for a full annotated video with trajectory overlay, CoC reasoning, and streaming metrics.
-
-### Derived Metrics: Speed & Steering Angle
-
-The model predicts future trajectory waypoints (64 points at 10 Hz over 6.4 s). Speed and steering angle are **not direct model outputs** — they are **computed from the predicted trajectory**:
-
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Speed** | $v = \\|\\Delta p\\| / \\Delta t$ | Displacement between consecutive waypoints divided by timestep (0.1 s) |
-| **Steering** | $\\delta = \\theta_t - \\theta_{t-1}$ | Change in heading angle ($\\text{atan2}(\\Delta y, \\Delta x)$) between consecutive steps |
-
-On the video overlay, these appear in **yellow** with an asterisk (`*`) and a footnote "derived from trajectory" to clearly distinguish them from direct model predictions.
 
 ### Key Parameters
 
