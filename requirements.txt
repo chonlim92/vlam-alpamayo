@@ -13,8 +13,5 @@ numpy>=1.26.0
 # pip install git+https://github.com/NVlabs/alpamayo.git
 # pip install git+https://github.com/NVlabs/alpamayo1.5.git
 
-# NVIDIA PhysicalAI AV dataset toolkit
-physical-ai-av>=0.1.0
-
 # Flash Attention 2 (optional — requires CUDA Toolkit with nvcc)
 # pip install flash-attn --no-build-isolation

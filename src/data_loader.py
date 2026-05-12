@@ -2,7 +2,6 @@
 
 from datasets import load_dataset
 from huggingface_hub import login
-from physical_ai_av import PhysicalAIAVDataset
 
 from src.config import AppConfig
 
@@ -14,7 +13,7 @@ DATASETS = {
     # ── NVIDIA primary datasets ───────────────────────────────────────────
     "physical-ai-av": {
         "hf_id": "nvidia/PhysicalAI-Autonomous-Vehicles",
-        "loader": "physical_ai_av",
+        "loader": "hf_streaming",
         "description": (
             "1,700 hours of driving data from 25 countries and 2,500+ cities. "
             "306,152 clips (20s each) with multi-camera (7), LiDAR, and radar coverage. "
@@ -157,22 +156,7 @@ def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num
     ds_info = DATASETS[dataset_key]
     login(token=config.huggingface_token)
 
-    if ds_info["loader"] == "physical_ai_av":
-        return _load_physical_ai_av(ds_info["hf_id"], num_samples)
-    else:
-        return _load_hf_streaming(ds_info["hf_id"], num_samples)
-
-
-def _load_physical_ai_av(repo_id: str, num_samples: int) -> list:
-    """Load via the physical_ai_av SDK (streaming)."""
-    dataset = PhysicalAIAVDataset(repo_id=repo_id)
-
-    samples = []
-    for i, sample in enumerate(dataset):
-        if i >= num_samples:
-            break
-        samples.append(sample)
-    return samples
+    return _load_hf_streaming(ds_info["hf_id"], num_samples)
 
 
 def _load_hf_streaming(repo_id: str, num_samples: int) -> list:
