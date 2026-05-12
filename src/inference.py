@@ -75,24 +75,55 @@ class InferenceEngine:
 
     def _format_parquet_result(self, sample: dict) -> dict:
         """Format a pre-annotated parquet row as an inference result."""
-        # Find the reasoning text — column names may vary
+        keys = list(sample.keys())
+        print(f"[DEBUG] Parquet sample keys: {keys}")
+        for k in keys:
+            v = sample[k]
+            preview = str(v)[:200] if v is not None else "None"
+            print(f"  {k}: {preview}")
+
+        # Find the reasoning text — try all plausible column names
         reasoning = ""
         for key in sample:
             kl = key.lower()
-            if "coc" in kl or "reasoning" in kl or "chain" in kl:
-                reasoning = str(sample[key])
+            if any(t in kl for t in ("coc", "reasoning", "chain", "annotation", "description", "text", "label")):
+                val = sample[key]
+                if val is not None and str(val).strip():
+                    reasoning = str(val)
+                    break
+
+        # Find clip identifier
+        clip_id = "unknown"
+        for key in sample:
+            kl = key.lower()
+            if any(t in kl for t in ("clip_uuid", "clip_id", "uuid", "clip", "id", "name")):
+                clip_id = str(sample[key])
                 break
 
-        clip_id = sample.get("clip_uuid", sample.get("clip_id", "unknown"))
+        lines = [f"Clip ID:         {clip_id}"]
 
-        lines = [
-            f"Clip UUID:       {clip_id}",
-        ]
-        if "event_cluster" in sample:
-            lines.append(f"Event Cluster:   {sample['event_cluster']}")
-        if "keyframes" in sample:
-            lines.append(f"Keyframes:       {sample['keyframes']}")
-        lines.extend(["", "━━━  Chain-of-Causation (pre-annotated)  ━━━━━━━━━━━━━━━━", "", reasoning])
+        # Include all other metadata fields
+        skip_keys = set()
+        for key in sample:
+            kl = key.lower()
+            if any(t in kl for t in ("clip_uuid", "clip_id", "uuid", "clip", "id", "name",
+                                      "coc", "reasoning", "chain", "annotation", "description", "text", "label")):
+                skip_keys.add(key)
+
+        for key in sample:
+            if key not in skip_keys:
+                val = sample[key]
+                if val is not None:
+                    val_str = str(val)
+                    if len(val_str) <= 200:
+                        lines.append(f"{key}:  {val_str}")
+
+        lines.extend([
+            "",
+            "━━━  Chain-of-Causation (pre-annotated)  ━━━━━━━━━━━━━━━━",
+            "",
+            reasoning if reasoning else "(no reasoning text found in this row)",
+        ])
 
         return {
             "model": f"{MODEL_INFO[self.model_key]['name']} (pre-annotated data)",
