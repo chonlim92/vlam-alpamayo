@@ -501,7 +501,7 @@ def _format_reasoning_result(result: dict) -> str:
         f"*{result['timestamp']}*\n",
         "---",
         "### Chain-of-Causation Reasoning\n",
-        result.get("reasoning_trace", "*(no reasoning trace generated)*"),
+        str(result.get("reasoning_trace", "*(no reasoning trace generated)*")),
     ]
 
     if result.get("trajectory"):

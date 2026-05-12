@@ -67,6 +67,9 @@ class InferenceEngine:
                 )
             )
             reasoning = extra.get("cot", [""])[0] if extra else ""
+            # Ensure reasoning is a string (model may return ndarray)
+            if not isinstance(reasoning, str):
+                reasoning = str(reasoning.tolist() if hasattr(reasoning, 'tolist') else reasoning)
             trajectory = self._format_trajectory(pred_xyz)
         except (ValueError, TypeError) as e:
             reasoning = f"(inference failed — data format may be incompatible: {e})"
@@ -277,7 +280,7 @@ class InferenceEngine:
                 "",
                 "---",
                 "### Model Reasoning\n",
-                model_reasoning,
+                str(model_reasoning) if not isinstance(model_reasoning, str) else model_reasoning,
             ])
 
         # Pre-annotated CoC reasoning from parquet
@@ -414,11 +417,15 @@ class InferenceEngine:
         reasoning = cot_list[0] if cot_list else "(no reasoning generated)"
         # Ensure reasoning is a string (may be numpy array or tensor)
         if not isinstance(reasoning, str):
-            if hasattr(reasoning, 'item'):
-                reasoning = str(reasoning.item())
-            elif hasattr(reasoning, 'tolist'):
-                reasoning = str(reasoning.tolist())
-            else:
+            try:
+                if hasattr(reasoning, 'item'):
+                    reasoning = str(reasoning.item())
+                elif hasattr(reasoning, 'tolist'):
+                    val = reasoning.tolist()
+                    reasoning = val if isinstance(val, str) else str(val)
+                else:
+                    reasoning = str(reasoning)
+            except (ValueError, TypeError):
                 reasoning = str(reasoning)
         print(f"  CoC reasoning: {len(reasoning)} chars")
 
