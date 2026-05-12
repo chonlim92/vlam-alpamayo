@@ -628,7 +628,7 @@ def _extract_video_frames(video_reader, max_frames: int = 40) -> list[np.ndarray
             ts = video_reader.timestamps
             n_total = len(ts)
             step = max(1, n_total // max_frames)
-            indices = list(range(0, n_total, step))[:max_frames]
+            indices = np.array(range(0, n_total, step))[:max_frames]
             images = video_reader.decode_images_from_frame_indices(indices)
             for img in images:
                 arr = _frame_to_numpy(img)
