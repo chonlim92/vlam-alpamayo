@@ -105,8 +105,8 @@ def render_result_video(
                     canvas, gt_waypoints, idx, total,
                     color_start=(255, 140, 0), color_fade=0.5,
                 )
-            # Per-frame trajectory info (top-left)
-            _draw_frame_trajectory_info(canvas, wps, idx, total, metrics=traj_metrics)
+            # Per-frame trajectory info (top-left) — streams ADE/FDE progressively
+            _draw_frame_trajectory_info(canvas, wps, idx, total, gt_waypoints=gt_waypoints)
 
         # ── CoC reasoning log (bottom, streaming) ────────────────────────
         time_s = idx / fps if fps > 0 else idx
@@ -562,9 +562,9 @@ def _draw_frame_trajectory_info(
     wps: np.ndarray,
     frame_idx: int,
     total_frames: int,
-    metrics: dict | None = None,
+    gt_waypoints: np.ndarray | None = None,
 ) -> None:
-    """Draw per-frame trajectory position, speed, and heading on the video."""
+    """Draw per-frame trajectory position, speed, heading, and streaming ADE/FDE."""
     h, w = canvas.shape[:2]
     if wps.ndim != 2 or wps.shape[0] < 2:
         return
@@ -578,7 +578,6 @@ def _draw_frame_trajectory_info(
         dx = wps[traj_idx, 0] - wps[traj_idx - 1, 0]
         dy = wps[traj_idx, 1] - wps[traj_idx - 1, 1]
         dist = np.sqrt(dx**2 + dy**2)
-        # Estimate dt from total trajectory / total points
         total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
         heading_deg = np.degrees(np.arctan2(dy, dx))
     else:
@@ -586,8 +585,19 @@ def _draw_frame_trajectory_info(
         total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
         heading_deg = 0.0
 
-    # Determine box height based on whether metrics are present
-    has_metrics = metrics and (metrics.get("min_ade") is not None or metrics.get("min_fde") is not None)
+    # Compute progressive ADE/FDE up to current trajectory point
+    ade_val, fde_val = None, None
+    if gt_waypoints is not None and gt_waypoints.ndim == 2 and gt_waypoints.shape[0] >= 2:
+        pred = wps[:, :2]
+        gt = gt_waypoints[:, :2]
+        # Progressive: only compute up to current point
+        cur_len = min(traj_idx + 1, len(pred), len(gt))
+        if cur_len >= 1:
+            errors = np.linalg.norm(gt[:cur_len] - pred[:cur_len], axis=1)
+            ade_val = float(np.mean(errors))
+            fde_val = float(errors[-1])
+
+    has_metrics = ade_val is not None
     box_w, box_h = 280, 112 if has_metrics else 90
     margin = 15
     overlay = canvas.copy()
@@ -609,13 +619,11 @@ def _draw_frame_trajectory_info(
     cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
     cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
 
-    # ADE/FDE metrics line
+    # Streaming ADE/FDE — values evolve as trajectory progresses
     if has_metrics:
         y_pos += 22
-        ade_str = f"ADE: {metrics['min_ade']:.3f}m" if metrics.get("min_ade") is not None else ""
-        fde_str = f"FDE: {metrics['min_fde']:.3f}m" if metrics.get("min_fde") is not None else ""
-        cv2.putText(canvas, ade_str, (margin + 8, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
-        cv2.putText(canvas, fde_str, (margin + 150, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"ADE: {ade_val:.3f}m", (margin + 8, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"FDE: {fde_val:.3f}m", (margin + 150, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:
