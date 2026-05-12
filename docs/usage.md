@@ -22,16 +22,25 @@ python -m src.cli run --model alpamayo-1.5
 # Process multiple data samples with more trajectory samples
 python -m src.cli run --model alpamayo-1.5 --num-data 3 --samples 4
 
-# Save to a specific file
+# Use a specific dataset
+python -m src.cli run --dataset drivelm
+python -m src.cli run --dataset lingoqa --model alpamayo-1.5
+
+# Save JSON to a specific file (video is always saved to output/)
 python -m src.cli run --output results/my_result.json
 ```
+
+Each run generates:
+- A **JSON** file with the reasoning trace and trajectory data
+- An **annotated MP4 video** in the `output/` folder with camera frames, BEV trajectory overlay, reasoning text, and a timeline bar
 
 ### Visual Question Answering (Alpamayo 1.5 only)
 
 ```bash
 python -m src.cli vqa "What is the ego vehicle doing in this scene?"
 
-python -m src.cli vqa "Is it safe to change lanes?" --output vqa_result.json
+# Use a different dataset source
+python -m src.cli vqa "Is it safe to change lanes?" --dataset drivelm --output vqa_result.json
 ```
 
 ### Launch the GUI
@@ -57,9 +66,15 @@ The web GUI (powered by Gradio) has three tabs:
 
 1. **Select Model** from the dropdown (`alpamayo-1` or `alpamayo-1.5`)
 2. Click **Load Model** — wait for confirmation
-3. Set **Number of Data Samples** and click **Load Data**
-4. Adjust **Sample Index** and **Trajectory Samples** count
-5. Click **Run Reasoning** to generate CoC reasoning and trajectory predictions
+3. **Select Dataset** from the dropdown (14 datasets available)
+4. Set **Number of Data Samples** and click **Load Data**
+5. Adjust **Sample Index** and **Trajectory Samples** count
+6. Click **Run Reasoning** to generate output
+
+Results appear in three sub-tabs:
+- **📹 Video** — Annotated video with camera frames, BEV trajectory mini-map, scrolling reasoning text, and timeline bar. Auto-plays in the browser.
+- **🗺️ Trajectory** — Interactive BEV trajectory plot image showing predicted waypoints.
+- **📝 Text** — Full reasoning trace and trajectory metadata.
 
 ### 2. Visual QA Tab (Alpamayo 1.5 only)
 

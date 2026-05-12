@@ -4,8 +4,9 @@ import gradio as gr
 
 from src.config import AppConfig, load_config
 from src.model_loader import get_model_list, MODEL_IDS, MODEL_INFO
-from src.data_loader import get_dataset_info, load_sample_data
+from src.data_loader import get_dataset_info, load_sample_data, DATASET_KEYS
 from src.inference import InferenceEngine
+from src.visualization import render_result_video, render_trajectory_plot
 
 # Global state
 _engine: InferenceEngine | None = None
@@ -38,34 +39,41 @@ def load_model_action(model_key: str) -> str:
         return f"❌ Error loading model: {e}"
 
 
-def load_data_action(num_samples: int) -> str:
-    """Load sample data from the dataset."""
+def load_data_action(dataset_key: str, num_samples: int) -> str:
+    """Load sample data from the selected dataset."""
     global _data_samples
     try:
         config = _get_config()
-        _data_samples = load_sample_data(config, num_samples=int(num_samples))
-        return f"✅ Loaded {len(_data_samples)} sample(s) from PhysicalAI-AV dataset."
+        _data_samples = load_sample_data(
+            config, dataset_key=dataset_key, num_samples=int(num_samples),
+        )
+        return f"✅ Loaded {len(_data_samples)} sample(s) from {dataset_key}."
     except Exception as e:
         return f"❌ Error loading data: {e}"
 
 
-def run_reasoning_action(sample_idx: int, num_traj_samples: int) -> str:
-    """Run reasoning inference on the selected sample."""
+def run_reasoning_action(
+    sample_idx: int, num_traj_samples: int,
+) -> tuple[str, str | None, object | None]:
+    """Run reasoning inference — returns (text, video_path, trajectory_image)."""
     global _engine, _data_samples
+    empty = ("", None, None)
+
     if _engine is None:
-        return "❌ Please load a model first."
+        return ("❌ Please load a model first.", None, None)
     if not _data_samples:
-        return "❌ Please load data samples first."
+        return ("❌ Please load data samples first.", None, None)
 
     idx = int(sample_idx)
     if idx < 0 or idx >= len(_data_samples):
-        return f"❌ Invalid sample index. Available: 0 to {len(_data_samples) - 1}"
+        return (f"❌ Invalid sample index. Available: 0 to {len(_data_samples) - 1}", None, None)
 
     try:
         _engine.config.num_traj_samples = int(num_traj_samples)
         result = _engine.run_reasoning(_data_samples[idx])
         _engine.save_result(result)
 
+        # ── Text output ──────────────────────────────────────────────
         output_lines = [
             f"🧠 Model: {result['model']}",
             f"📅 Timestamp: {result['timestamp']}",
@@ -83,9 +91,20 @@ def run_reasoning_action(sample_idx: int, num_traj_samples: int) -> str:
                 f"Horizon: {traj.get('horizon_seconds', 'N/A')}s at {traj.get('frequency_hz', 'N/A')}Hz",
             ])
 
-        return "\n".join(output_lines)
+        text_out = "\n".join(output_lines)
+
+        # ── Video output ─────────────────────────────────────────────
+        config = _get_config()
+        video_path = render_result_video(
+            _data_samples[idx], result, output_dir=config.output_dir,
+        )
+
+        # ── Trajectory plot ──────────────────────────────────────────
+        traj_img = render_trajectory_plot(result.get("trajectory"))
+
+        return (text_out, video_path, traj_img)
     except Exception as e:
-        return f"❌ Inference error: {e}"
+        return (f"❌ Inference error: {e}", None, None)
 
 
 def run_vqa_action(sample_idx: int, question: str) -> str:
@@ -168,6 +187,11 @@ def build_gui() -> gr.Blocks:
 
                         gr.Markdown("---")
 
+                        dataset_select = gr.Dropdown(
+                            choices=DATASET_KEYS,
+                            value="physical-ai-av",
+                            label="Select Dataset",
+                        )
                         num_data_samples = gr.Slider(
                             minimum=1, maximum=10, value=1, step=1,
                             label="Number of Data Samples",
@@ -185,18 +209,36 @@ def build_gui() -> gr.Blocks:
                             label="Trajectory Samples",
                         )
                         run_btn = gr.Button("▶ Run Reasoning", variant="primary", size="lg")
-                        result_output = gr.Textbox(
-                            label="Reasoning Output",
-                            interactive=False,
-                            lines=20,
-                        )
+
+                        with gr.Tabs():
+                            with gr.Tab("📹 Video"):
+                                result_video = gr.Video(
+                                    label="Annotated Output Video",
+                                    interactive=False,
+                                    autoplay=True,
+                                )
+                            with gr.Tab("🗺️ Trajectory"):
+                                result_traj_img = gr.Image(
+                                    label="BEV Trajectory Plot",
+                                    interactive=False,
+                                )
+                            with gr.Tab("📝 Text"):
+                                result_output = gr.Textbox(
+                                    label="Reasoning Output",
+                                    interactive=False,
+                                    lines=20,
+                                )
 
                 load_model_btn.click(load_model_action, inputs=[model_select], outputs=[model_status])
-                load_data_btn.click(load_data_action, inputs=[num_data_samples], outputs=[data_status])
+                load_data_btn.click(
+                    load_data_action,
+                    inputs=[dataset_select, num_data_samples],
+                    outputs=[data_status],
+                )
                 run_btn.click(
                     run_reasoning_action,
                     inputs=[sample_idx, num_traj],
-                    outputs=[result_output],
+                    outputs=[result_output, result_video, result_traj_img],
                 )
 
             # --- Tab 2: VQA ---

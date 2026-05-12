@@ -92,6 +92,14 @@ Alpamayo 1.5 incorporated data from these public driving datasets during trainin
 | [Talk2Car](https://github.com/talk2car/Talk2Car) | Natural language grounding in driving |
 | [CODA-LM](https://github.com/DLCV-BUAA/CODA-LM) | Corner case analysis |
 | [DriveGPT4](https://github.com/OpenDriveLab/DriveGPT4) | Multi-modal driving dialogue |
+| Drive-Action | Driving action prediction |
+| MapLM | Map-centric language-model driving |
+| MM-AU | Multi-modal action understanding for driving |
+| nuInstruct | Instruction-following on nuScenes |
+| Senna | Driving scene understanding and QA |
+| Roadwork | Construction zone and roadwork scenarios |
+
+All of these datasets are selectable via the CLI (`--dataset`) and the GUI dataset dropdown. The app streams data from Hugging Face without requiring a full download.
 
 ---
 

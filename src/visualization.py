@@ -1,0 +1,424 @@
+"""Visualization utilities for driving scenes and trajectory predictions."""
+
+import math
+from pathlib import Path
+from datetime import datetime
+
+import cv2
+import numpy as np
+
+
+# ── Colour palette ────────────────────────────────────────────────────────────
+_TRAJ_COLOR = (0, 255, 128)       # green – predicted trajectory
+_TRAJ_ALT_COLOR = (255, 200, 50)  # cyan  – alternative trajectory samples
+_EGO_COLOR = (255, 100, 0)        # blue  – ego marker
+_TEXT_BG = (30, 30, 30)
+_TEXT_FG = (255, 255, 255)
+
+
+def render_result_video(
+    data_sample: dict,
+    result: dict,
+    output_dir: str = "output",
+    fps: int = 10,
+) -> str:
+    """Render an annotated MP4 video from a data sample and inference result.
+
+    Composites the front-camera frames with an overlay showing:
+    - The Chain-of-Causation reasoning text (scrolling)
+    - The predicted trajectory drawn on a BEV mini-map
+    - A timeline bar
+
+    Args:
+        data_sample: Raw data sample (must contain camera images).
+        result: Inference result dict from InferenceEngine.
+        output_dir: Directory to write the video file.
+        fps: Frames per second of the output video.
+
+    Returns:
+        Absolute path to the generated .mp4 file.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    video_path = output_path / f"result_{ts}.mp4"
+
+    frames = _extract_frames(data_sample)
+    if not frames:
+        # No camera data – generate a static summary frame as a short clip
+        frames = [_make_placeholder_frame()]
+
+    h, w = frames[0].shape[:2]
+    reasoning_text = result.get("reasoning_trace", "")
+    trajectory = result.get("trajectory")
+    model_name = result.get("model", "Alpamayo")
+
+    # Build annotated frames
+    annotated = []
+    total = len(frames)
+    reasoning_lines = _wrap_text(reasoning_text, max_chars=70)
+    # Scroll reasoning text across frames
+    lines_per_frame = max(1, len(reasoning_lines) // max(total, 1))
+
+    for idx, frame in enumerate(frames):
+        canvas = frame.copy()
+
+        # ── BEV trajectory mini-map (top-right) ──────────────────────────
+        if trajectory and "waypoints" in trajectory:
+            _draw_bev_minimap(canvas, trajectory["waypoints"], idx, total)
+
+        # ── Reasoning text overlay (bottom) ──────────────────────────────
+        visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 5, 0))
+        visible_lines = reasoning_lines[visible_start:visible_start + 5]
+        _draw_text_overlay(canvas, visible_lines, model_name)
+
+        # ── Timeline bar (very bottom) ───────────────────────────────────
+        _draw_timeline(canvas, idx, total)
+
+        annotated.append(canvas)
+
+    # ── Write video ──────────────────────────────────────────────────────
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, fps, (w, h))
+    for f in annotated:
+        writer.write(f)
+    writer.release()
+
+    # Try to re-encode with H.264 for browser compatibility
+    h264_path = _reencode_h264(video_path)
+
+    return str(h264_path)
+
+
+def render_trajectory_plot(trajectory: dict | None) -> np.ndarray | None:
+    """Render a standalone BEV trajectory plot as an image (numpy array).
+
+    Args:
+        trajectory: Trajectory dict with 'waypoints' key.
+
+    Returns:
+        RGB numpy array (plot image) or None.
+    """
+    if not trajectory or "waypoints" not in trajectory:
+        return None
+
+    size = 480
+    img = np.zeros((size, size, 3), dtype=np.uint8)
+    img[:] = (40, 40, 40)
+
+    waypoints = np.array(trajectory["waypoints"])
+    if waypoints.ndim == 3:
+        # Multiple trajectory samples – draw all
+        for s in range(waypoints.shape[0]):
+            _draw_traj_on_bev(img, waypoints[s], size, color=_TRAJ_ALT_COLOR, thickness=1)
+        _draw_traj_on_bev(img, waypoints[0], size, color=_TRAJ_COLOR, thickness=2)
+    elif waypoints.ndim == 2:
+        _draw_traj_on_bev(img, waypoints, size, color=_TRAJ_COLOR, thickness=2)
+
+    # Draw ego vehicle marker at center
+    cx, cy = size // 2, int(size * 0.75)
+    cv2.circle(img, (cx, cy), 8, _EGO_COLOR, -1)
+    cv2.putText(img, "EGO", (cx - 15, cy + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.4, _TEXT_FG, 1)
+
+    # Axis labels
+    cv2.putText(img, "BEV Trajectory", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _TEXT_FG, 1)
+    horizon = trajectory.get("horizon_seconds", 6.4)
+    freq = trajectory.get("frequency_hz", 10)
+    n_wp = trajectory.get("num_waypoints", "?")
+    cv2.putText(
+        img, f"{n_wp} pts | {horizon}s @ {freq}Hz",
+        (10, size - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1,
+    )
+
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+
+def _extract_frames(data_sample: dict) -> list[np.ndarray]:
+    """Extract camera frames from a data sample.
+
+    Supports common data formats: list of PIL images, numpy arrays,
+    torch tensors, or video bytes.
+    """
+    frames = []
+
+    # Try front-wide camera first, then any available camera
+    for cam_key in ("camera_front_wide_120fov", "front_wide", "camera_front_wide", "images", "video"):
+        raw = data_sample.get(cam_key)
+        if raw is not None:
+            frames = _convert_to_frames(raw)
+            if frames:
+                return frames
+
+    # Try top-level image/images field
+    for key in ("image", "frame", "frames"):
+        raw = data_sample.get(key)
+        if raw is not None:
+            frames = _convert_to_frames(raw)
+            if frames:
+                return frames
+
+    # Fallback: look for any key containing "camera" or "image"
+    for key, val in data_sample.items():
+        if any(k in key.lower() for k in ("camera", "image", "frame")):
+            frames = _convert_to_frames(val)
+            if frames:
+                return frames
+
+    return frames
+
+
+def _convert_to_frames(raw) -> list[np.ndarray]:
+    """Convert various data types to a list of BGR numpy frames."""
+    frames = []
+
+    # PIL Image
+    try:
+        from PIL import Image
+        if isinstance(raw, Image.Image):
+            arr = np.array(raw)
+            if arr.ndim == 3 and arr.shape[2] == 3:
+                frames.append(cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
+            elif arr.ndim == 2:
+                frames.append(cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR))
+            return frames
+    except ImportError:
+        pass
+
+    # numpy array – single frame or batch
+    if isinstance(raw, np.ndarray):
+        if raw.ndim == 3:
+            if raw.shape[2] == 3:
+                frames.append(raw.copy())
+            return frames
+        elif raw.ndim == 4:
+            for i in range(raw.shape[0]):
+                frames.append(raw[i].copy())
+            return frames
+
+    # torch tensor
+    try:
+        import torch
+        if isinstance(raw, torch.Tensor):
+            arr = raw.cpu().numpy()
+            if arr.ndim == 4:
+                # (B, C, H, W) or (B, H, W, C)
+                if arr.shape[1] in (1, 3):
+                    arr = arr.transpose(0, 2, 3, 1)
+                for i in range(arr.shape[0]):
+                    f = (arr[i] * 255).clip(0, 255).astype(np.uint8) if arr.max() <= 1.0 else arr[i].astype(np.uint8)
+                    frames.append(f)
+            elif arr.ndim == 3:
+                if arr.shape[0] in (1, 3):
+                    arr = arr.transpose(1, 2, 0)
+                f = (arr * 255).clip(0, 255).astype(np.uint8) if arr.max() <= 1.0 else arr.astype(np.uint8)
+                frames.append(f)
+            return frames
+    except ImportError:
+        pass
+
+    # list of items – recurse
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            frames.extend(_convert_to_frames(item))
+        return frames
+
+    return frames
+
+
+def _make_placeholder_frame(w: int = 960, h: int = 540) -> np.ndarray:
+    """Generate a dark placeholder frame."""
+    frame = np.zeros((h, w, 3), dtype=np.uint8)
+    frame[:] = (50, 50, 50)
+    cv2.putText(
+        frame, "No camera data available",
+        (w // 2 - 180, h // 2),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2,
+    )
+    return frame
+
+
+def _draw_bev_minimap(
+    canvas: np.ndarray,
+    waypoints,
+    frame_idx: int,
+    total_frames: int,
+    map_size: int = 180,
+) -> None:
+    """Draw a BEV trajectory mini-map in the top-right corner."""
+    h, w = canvas.shape[:2]
+    margin = 15
+    x0, y0 = w - map_size - margin, margin
+
+    # Semi-transparent background
+    overlay = canvas.copy()
+    cv2.rectangle(overlay, (x0, y0), (x0 + map_size, y0 + map_size), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
+    cv2.rectangle(canvas, (x0, y0), (x0 + map_size, y0 + map_size), (80, 80, 80), 1)
+
+    wps = np.array(waypoints)
+    if wps.ndim == 3:
+        wps = wps[0]  # first sample
+    if wps.ndim != 2 or wps.shape[0] == 0:
+        return
+
+    _draw_traj_on_bev_region(canvas, wps, x0, y0, map_size, frame_idx, total_frames)
+
+
+def _draw_traj_on_bev_region(
+    canvas: np.ndarray,
+    wps: np.ndarray,
+    x0: int, y0: int, size: int,
+    frame_idx: int, total_frames: int,
+) -> None:
+    """Draw trajectory points in a BEV region on the canvas."""
+    # Use x, y columns (first two)
+    xs = wps[:, 0]
+    ys = wps[:, 1] if wps.shape[1] > 1 else np.zeros_like(xs)
+
+    # Normalize to fit mini-map with padding
+    pad = 20
+    all_coords = np.stack([xs, ys], axis=1)
+    mn = all_coords.min(axis=0)
+    mx = all_coords.max(axis=0)
+    span = mx - mn
+    span[span == 0] = 1.0
+
+    # Map to pixel coords in the minimap
+    px = ((xs - mn[0]) / span[0] * (size - 2 * pad) + pad + x0).astype(int)
+    py = ((ys - mn[1]) / span[1] * (size - 2 * pad) + pad + y0).astype(int)
+    # Flip y so forward is up
+    py = y0 + size - (py - y0)
+
+    # Draw trajectory line
+    pts = np.stack([px, py], axis=1)
+    for i in range(len(pts) - 1):
+        progress = i / max(len(pts) - 1, 1)
+        color = (
+            int(0 + 255 * progress),
+            int(255 - 100 * progress),
+            int(128 - 128 * progress),
+        )
+        cv2.line(canvas, tuple(pts[i]), tuple(pts[i + 1]), color, 2)
+
+    # Ego marker
+    ego_x = x0 + size // 2
+    ego_y = y0 + size - pad
+    cv2.circle(canvas, (ego_x, ego_y), 5, _EGO_COLOR, -1)
+
+    # Animate: show current position on trajectory based on frame progress
+    if total_frames > 1:
+        traj_idx = min(int(frame_idx / total_frames * len(pts)), len(pts) - 1)
+        cv2.circle(canvas, tuple(pts[traj_idx]), 4, (0, 0, 255), -1)
+
+
+def _draw_traj_on_bev(
+    img: np.ndarray,
+    wps: np.ndarray,
+    size: int,
+    color: tuple = _TRAJ_COLOR,
+    thickness: int = 2,
+) -> None:
+    """Draw trajectory on a standalone BEV image."""
+    if wps.ndim != 2 or wps.shape[0] == 0:
+        return
+
+    xs = wps[:, 0]
+    ys = wps[:, 1] if wps.shape[1] > 1 else np.zeros_like(xs)
+
+    pad = 40
+    mn_x, mx_x = xs.min(), xs.max()
+    mn_y, mx_y = ys.min(), ys.max()
+    span_x = mx_x - mn_x if mx_x != mn_x else 1.0
+    span_y = mx_y - mn_y if mx_y != mn_y else 1.0
+
+    cx, cy_base = size // 2, int(size * 0.75)
+    scale = (size - 2 * pad) / max(span_x, span_y)
+
+    px = (cx + (xs - xs.mean()) * scale).astype(int)
+    py = (cy_base - (ys - ys[0]) * scale).astype(int)
+
+    pts = np.stack([px, py], axis=1)
+    for i in range(len(pts) - 1):
+        cv2.line(img, tuple(pts[i]), tuple(pts[i + 1]), color, thickness)
+
+
+def _draw_text_overlay(canvas: np.ndarray, lines: list[str], model_name: str) -> None:
+    """Draw a semi-transparent text overlay at the bottom of the frame."""
+    h, w = canvas.shape[:2]
+    line_h = 22
+    panel_h = (len(lines) + 2) * line_h + 10
+    y_start = h - panel_h
+
+    # Semi-transparent panel
+    overlay = canvas.copy()
+    cv2.rectangle(overlay, (0, y_start), (w, h), _TEXT_BG, -1)
+    cv2.addWeighted(overlay, 0.7, canvas, 0.3, 0, canvas)
+
+    # Model name header
+    cv2.putText(
+        canvas, f"[{model_name}] Chain-of-Causation Reasoning",
+        (12, y_start + line_h),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 200, 255), 1,
+    )
+
+    # Reasoning text
+    for i, line in enumerate(lines):
+        y = y_start + (i + 2) * line_h + 5
+        cv2.putText(canvas, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, _TEXT_FG, 1)
+
+
+def _draw_timeline(canvas: np.ndarray, idx: int, total: int) -> None:
+    """Draw a thin progress bar at the very bottom."""
+    h, w = canvas.shape[:2]
+    bar_h = 4
+    progress = (idx + 1) / max(total, 1)
+    cv2.rectangle(canvas, (0, h - bar_h), (w, h), (60, 60, 60), -1)
+    cv2.rectangle(canvas, (0, h - bar_h), (int(w * progress), h), (0, 200, 255), -1)
+
+
+def _wrap_text(text: str, max_chars: int = 70) -> list[str]:
+    """Word-wrap text into lines of at most max_chars."""
+    if not text:
+        return ["(no reasoning trace)"]
+    words = text.replace("\n", " ").split()
+    lines = []
+    current = ""
+    for word in words:
+        if len(current) + len(word) + 1 > max_chars:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}" if current else word
+    if current:
+        lines.append(current)
+    return lines or ["(no reasoning trace)"]
+
+
+def _reencode_h264(mp4v_path: Path) -> Path:
+    """Try to re-encode with H.264 via ffmpeg for browser playback.
+
+    Falls back to the original mp4v file if ffmpeg is not available.
+    """
+    h264_path = mp4v_path.with_suffix(".h264.mp4")
+    try:
+        import subprocess
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(mp4v_path),
+                "-c:v", "libx264", "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                str(h264_path),
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+        if h264_path.exists() and h264_path.stat().st_size > 0:
+            mp4v_path.unlink()
+            return h264_path
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return mp4v_path

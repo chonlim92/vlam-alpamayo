@@ -6,8 +6,9 @@ import json
 
 from src.config import load_config
 from src.model_loader import get_model_list, MODEL_IDS
-from src.data_loader import get_dataset_info, load_sample_data
+from src.data_loader import get_dataset_info, load_sample_data, DATASET_KEYS
 from src.inference import InferenceEngine
+from src.visualization import render_result_video
 
 
 def cmd_info(args):
@@ -47,14 +48,16 @@ def cmd_run(args):
     if args.samples:
         config.num_traj_samples = args.samples
 
+    dataset_key = args.dataset or "physical-ai-av"
+
     print(f"Initializing inference with model: {model_key}")
     engine = InferenceEngine(config, model_key=model_key)
     engine.load()
 
     # Load sample data
     num_data = args.num_data or 1
-    print(f"Loading {num_data} sample(s) from PhysicalAI-AV dataset...")
-    data_samples = load_sample_data(config, num_samples=num_data)
+    print(f"Loading {num_data} sample(s) from dataset: {dataset_key}...")
+    data_samples = load_sample_data(config, dataset_key=dataset_key, num_samples=num_data)
 
     if not data_samples:
         print("Error: No data samples loaded. Check your HF token and dataset access.")
@@ -74,7 +77,13 @@ def cmd_run(args):
             traj = result["trajectory"]
             print(f"\nTrajectory: {traj['num_waypoints']} waypoints over {traj['horizon_seconds']}s")
 
-    # Save results
+        # Generate annotated video
+        video_path = render_result_video(
+            sample, result, output_dir=config.output_dir,
+        )
+        print(f"Video saved: {video_path}")
+
+    # Save JSON results
     if args.output:
         output_path = args.output
     else:
@@ -90,11 +99,13 @@ def cmd_vqa(args):
     """Run Visual Question Answering on a driving scene."""
     config = load_config()
 
+    dataset_key = args.dataset or "physical-ai-av"
+
     engine = InferenceEngine(config, model_key="alpamayo-1.5")
     engine.load()
 
-    print("Loading sample data...")
-    data_samples = load_sample_data(config, num_samples=1)
+    print(f"Loading sample data from: {dataset_key}...")
+    data_samples = load_sample_data(config, dataset_key=dataset_key, num_samples=1)
 
     if not data_samples:
         print("Error: No data samples loaded.")
@@ -151,6 +162,12 @@ def main():
         help="Number of trajectory samples per data point (default: from config)",
     )
     run_parser.add_argument(
+        "-d", "--dataset",
+        choices=DATASET_KEYS,
+        default="physical-ai-av",
+        help="Dataset to load samples from (default: physical-ai-av)",
+    )
+    run_parser.add_argument(
         "-o", "--output",
         help="Output file path (default: auto-generated in output/)",
     )
@@ -161,6 +178,12 @@ def main():
     vqa_parser.add_argument(
         "question",
         help="Question about the driving scene",
+    )
+    vqa_parser.add_argument(
+        "-d", "--dataset",
+        choices=DATASET_KEYS,
+        default="physical-ai-av",
+        help="Dataset to load samples from (default: physical-ai-av)",
     )
     vqa_parser.add_argument(
         "-o", "--output",
