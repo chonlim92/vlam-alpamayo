@@ -1,5 +1,7 @@
 # Usage Guide
 
+**Author:** Chong Kiat Lim
+
 ## CLI Usage
 
 The CLI provides four commands: `info`, `run`, `vqa`, and `gui`.

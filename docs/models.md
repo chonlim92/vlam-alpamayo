@@ -1,5 +1,7 @@
 # NVIDIA Alpamayo Models — Comparison & Technical Details
 
+**Author:** Chong Kiat Lim
+
 ## Overview
 
 NVIDIA Alpamayo is a family of **Vision-Language-Action (VLA)** models for autonomous driving. These models combine visual perception, language-based reasoning, and trajectory prediction into a unified architecture. They use a novel **Chain-of-Causation (CoC)** reasoning framework that links driving decisions to their causal factors, making the decision-making process interpretable.

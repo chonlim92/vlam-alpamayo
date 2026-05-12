@@ -1,5 +1,7 @@
 # 🏔️ VLAM-Alpamayo
 
+**Author:** Chong Kiat Lim
+
 An application for autonomous driving reasoning and explanation using NVIDIA's Alpamayo Vision-Language-Action (VLA) models. Provides both a **CLI** and a **web GUI** (Gradio) to run Chain-of-Causation reasoning and trajectory prediction on driving scenes.
 
 ## Supported Models
@@ -13,7 +15,7 @@ For a detailed comparison, see [docs/models.md](docs/models.md).
 
 ## Dataset
 
-This project uses NVIDIA's [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) dataset — 1,700 hours of multi-sensor driving data from 25 countries and 2,500+ cities (306,152 clips). Data is streamed on-demand; no full download required. See [docs/datasets.md](docs/datasets.md) for details.
+This project supports **14 driving datasets** streamed on-demand from Hugging Face (no full download required), including NVIDIA's [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (1,700 hours, 306K clips, 25 countries), plus DriveLM, LingoQA, nuScenesQA, NAVSIM, Omnidrive, Talk2Car, CODA-LM, DriveGPT4, and more. See [docs/datasets.md](docs/datasets.md) for the full list.
 
 ---
 
@@ -126,17 +128,20 @@ python -m src.cli info
 # Use the default model (Alpamayo 1.5)
 python -m src.cli run
 
-# Use Alpamayo 1 with 3 samples
-python -m src.cli run --model alpamayo-1 --num-data 3
+# Use Alpamayo 1 with 3 samples from a specific dataset
+python -m src.cli run --model alpamayo-1 --num-data 3 --dataset drivelm
 
-# Save output to a specific file
+# Save JSON to a specific file (video is always saved to output/)
 python -m src.cli run --output results/my_result.json
 ```
+
+Each run generates a **JSON result file** and an **annotated MP4 video** (with camera frames, BEV trajectory overlay, reasoning text, and timeline) in `output/`.
 
 ### CLI — Visual Question Answering (Alpamayo 1.5 only)
 
 ```bash
 python -m src.cli vqa "What is the ego vehicle doing?"
+python -m src.cli vqa "Is it safe to change lanes?" --dataset lingoqa
 ```
 
 ### GUI — Launch the web interface
@@ -172,8 +177,9 @@ vlam-alpamayo/
 │   ├── gui.py                # Gradio web GUI
 │   ├── config.py             # Configuration loader
 │   ├── model_loader.py       # Model loading & authentication
-│   ├── data_loader.py        # Dataset loading utilities
-│   └── inference.py          # Inference engine
+│   ├── data_loader.py        # Dataset loading (14 datasets)
+│   ├── inference.py          # Inference engine
+│   └── visualization.py      # Video & trajectory rendering
 ├── output/                   # Generated results (git-ignored)
 ├── .gitignore
 ├── requirements.txt
@@ -236,3 +242,24 @@ The model weights are ~22 GB. On a 100 MB/s connection, expect ~2.5 minutes. Wei
 - [Alpamayo 1 Code](https://github.com/NVlabs/alpamayo)
 - [Alpamayo 1.5 Code](https://github.com/NVlabs/alpamayo1.5)
 - [AlpaSim Simulator](https://github.com/NVlabs/alpasim)
+
+---
+
+## Tech Stack
+
+| Technology | Description |
+|---|---|
+| **Python 3.12** | Core language for the application |
+| **PyTorch ≥ 2.8** | Deep learning framework for model inference and tensor operations |
+| **Hugging Face Transformers** | Model loading, tokenization, and inference pipeline for 10B-parameter VLA models |
+| **Hugging Face Hub / Datasets** | Streaming access to gated model weights and 14 driving datasets without full download |
+| **NVIDIA Alpamayo (VLA)** | Vision-Language-Action models combining perception, Chain-of-Causation reasoning, and diffusion-based trajectory prediction |
+| **DeepSpeed** | Distributed inference optimization for large-scale model loading |
+| **Flash Attention 2 / SDPA** | Memory-efficient attention implementations for running 10B models on consumer GPUs (24 GB+) |
+| **Gradio** | Interactive web GUI with video playback, image display, dropdowns, sliders, and tabbed layout |
+| **OpenCV (cv2)** | Video encoding (MP4), frame compositing, BEV trajectory overlay, and text rendering |
+| **NumPy** | Numerical operations for trajectory processing, coordinate transforms, and visualization |
+| **argparse** | CLI framework with subcommands (`run`, `vqa`, `gui`, `info`), dataset/model selection |
+| **python-dotenv** | Configuration management via `config/.env` with environment variable overrides |
+| **ffmpeg** | Optional H.264 re-encoding for browser-compatible video playback |
+| **Git / GitHub** | Version control and collaborative development |

@@ -1,5 +1,7 @@
 # Datasets for VLAM-Alpamayo
 
+**Author:** Chong Kiat Lim
+
 ## Recommended Datasets
 
 Both Alpamayo models are designed to work with NVIDIA's PhysicalAI Autonomous Vehicles datasets.
