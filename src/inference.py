@@ -391,15 +391,65 @@ class InferenceEngine:
                 else:
                     messages = [{"role": "user", "content": question}]
 
+        # Debug: log message structure to diagnose any issues
+        print(f"  VQA messages: {len(messages)} entries")
+        for i, msg in enumerate(messages):
+            if isinstance(msg, dict):
+                content = msg.get("content", "")
+                content_desc = f"str({len(content)})" if isinstance(content, str) else f"{type(content).__name__}"
+                if isinstance(content, list):
+                    content_desc = f"list({len(content)}): [{', '.join(type(c).__name__ for c in content[:3])}...]"
+                print(f"    [{i}] role={msg.get('role')}, content={content_desc}")
+            else:
+                print(f"    [{i}] type={type(msg).__name__}, value={str(msg)[:80]}")
+
+        # Sanitize: ensure all messages are dicts with role/content
+        clean_messages = []
+        for msg in messages:
+            if isinstance(msg, str):
+                # Wrap bare strings as user messages
+                clean_messages.append({"role": "user", "content": msg})
+            elif isinstance(msg, dict):
+                clean_messages.append(msg)
+            else:
+                print(f"  WARNING: skipping unexpected message type: {type(msg)}")
+        messages = clean_messages
+
         # Tokenize
         processor = helper.get_processor(self.model.tokenizer)
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
-        )
+        try:
+            inputs = processor.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+        except TypeError as e:
+            # Likely the processor can't handle multimodal content blocks
+            # Fall back to text-only: extract text from content blocks
+            print(f"  apply_chat_template failed: {e}")
+            print(f"  Falling back to text-only chat template...")
+            text_messages = []
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Extract text parts from multimodal content blocks
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                        elif isinstance(part, str):
+                            text_parts.append(part)
+                    content = " ".join(text_parts) if text_parts else ""
+                text_messages.append({"role": msg.get("role", "user"), "content": content})
+            inputs = processor.apply_chat_template(
+                text_messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
 
         # Generate text
         import torch
