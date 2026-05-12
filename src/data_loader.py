@@ -727,6 +727,67 @@ def _extract_ego_xyz_from_egomotion(ego) -> np.ndarray | None:
                 values = ego.values
                 vtype = getattr(ego, 'value_type', None)
                 print(f"  Egomotion value_type: {vtype}, values type: {type(values).__name__}")
+
+                # If values is a single EgomotionState (not array/list),
+                # inspect it and try to call the Interpolator at its timestamps
+                if not isinstance(values, (np.ndarray, list, tuple)):
+                    val_attrs = [a for a in dir(values) if not a.startswith('_')]
+                    print(f"  EgomotionState attrs: {val_attrs}")
+                    # Log any array-like attributes on the state object
+                    for attr in val_attrs:
+                        try:
+                            v = getattr(values, attr)
+                            if isinstance(v, np.ndarray):
+                                print(f"    .{attr}: ndarray shape={v.shape} dtype={v.dtype}")
+                            elif isinstance(v, (list, tuple)) and len(v) > 0:
+                                print(f"    .{attr}: {type(v).__name__} len={len(v)}, [0]={type(v[0]).__name__}")
+                            else:
+                                vstr = str(v)
+                                if len(vstr) > 120:
+                                    vstr = vstr[:120] + "..."
+                                print(f"    .{attr}: {type(v).__name__} = {vstr}")
+                        except Exception as e:
+                            print(f"    .{attr}: <error: {e}>")
+
+                    # Try to evaluate Interpolator at its own timestamps
+                    if hasattr(ego, 'timestamps'):
+                        ts = ego.timestamps
+                        print(f"  Interpolator timestamps: type={type(ts).__name__}, len={len(ts) if hasattr(ts, '__len__') else '?'}")
+                        # Try calling interpolator
+                        for call_method in ['__call__', 'interpolate', 'evaluate', 'sample']:
+                            if hasattr(ego, call_method) or call_method == '__call__':
+                                try:
+                                    if call_method == '__call__':
+                                        states = ego(ts)
+                                    else:
+                                        states = getattr(ego, call_method)(ts)
+                                    print(f"  ego({call_method}) returned: {type(states).__name__}")
+                                    result = _extract_xyz_from_states(states)
+                                    if result is not None:
+                                        return result
+                                    break
+                                except Exception as e:
+                                    print(f"  ego.{call_method}(timestamps) failed: {e}")
+
+                    # Try extracting from the single EgomotionState directly
+                    # (it may contain the full trajectory as array attributes)
+                    for pos_attr in ('position', 'translation', 'xyz', 'pose',
+                                     'position_m', 'translation_m'):
+                        if hasattr(values, pos_attr):
+                            pos = getattr(values, pos_attr)
+                            print(f"  EgomotionState.{pos_attr}: type={type(pos).__name__}")
+                            if isinstance(pos, np.ndarray):
+                                print(f"    shape={pos.shape}")
+                                if pos.ndim == 2 and pos.shape[1] >= 3:
+                                    return pos[:, :3].astype(np.float64)
+                                elif pos.ndim == 2 and pos.shape[1] == 2:
+                                    z = np.zeros((pos.shape[0], 1))
+                                    return np.hstack([pos, z]).astype(np.float64)
+                                elif pos.ndim == 1 and len(pos) >= 3:
+                                    return pos[:3].reshape(1, 3).astype(np.float64)
+
+                    return None
+
                 if isinstance(values, np.ndarray):
                     print(f"  Egomotion values shape: {values.shape}, dtype: {values.dtype}")
                     if values.ndim == 2 and values.shape[1] >= 3:
@@ -829,6 +890,79 @@ def _extract_ego_xyz_from_egomotion(ego) -> np.ndarray | None:
 
     except Exception as e:
         print(f"  ego_history_xyz extraction error: {e}")
+
+    return None
+
+
+def _extract_xyz_from_states(states) -> np.ndarray | None:
+    """Extract xyz positions from a collection of EgomotionState objects."""
+    if isinstance(states, np.ndarray):
+        print(f"  States array: shape={states.shape}, dtype={states.dtype}")
+        if states.ndim == 2 and states.shape[1] >= 3:
+            return states[:, :3].astype(np.float64)
+        if states.ndim == 3 and states.shape[1] == 4 and states.shape[2] == 4:
+            return states[:, :3, 3].astype(np.float64)
+        return None
+
+    # Single state object — inspect it
+    if not isinstance(states, (list, tuple)):
+        s_attrs = [a for a in dir(states) if not a.startswith('_')]
+        print(f"  States type: {type(states).__name__}, attrs: {s_attrs}")
+        # Check for position-like array attributes
+        for attr in ('position', 'translation', 'xyz', 'position_m',
+                     'translation_m', 'pose'):
+            if hasattr(states, attr):
+                val = getattr(states, attr)
+                if isinstance(val, np.ndarray):
+                    print(f"  States.{attr}: shape={val.shape}")
+                    if val.ndim == 2 and val.shape[1] >= 3:
+                        return val[:, :3].astype(np.float64)
+                    if val.ndim == 1 and len(val) >= 3:
+                        return val[:3].reshape(1, 3).astype(np.float64)
+        return None
+
+    # List of states
+    if len(states) == 0:
+        return None
+
+    first = states[0]
+    print(f"  States list len={len(states)}, [0] type={type(first).__name__}")
+    s_attrs = [a for a in dir(first) if not a.startswith('_')]
+    print(f"  States[0] attrs: {s_attrs}")
+
+    # Try common position attribute names
+    for attr in ('position', 'translation', 'xyz', 'position_m',
+                 'translation_m', 'pose'):
+        if hasattr(first, attr):
+            pos0 = getattr(first, attr)
+            print(f"  States[0].{attr}: type={type(pos0).__name__}, value={pos0}")
+            try:
+                xyz = []
+                for s in states:
+                    p = getattr(s, attr)
+                    if isinstance(p, np.ndarray):
+                        xyz.append(p[:3])
+                    elif hasattr(p, 'x'):
+                        xyz.append([p.x, p.y, getattr(p, 'z', 0)])
+                    elif isinstance(p, (list, tuple)):
+                        xyz.append(list(p[:3]))
+                    else:
+                        break
+                if len(xyz) == len(states):
+                    arr = np.array(xyz, dtype=np.float64)
+                    print(f"  Extracted xyz from .{attr}: shape={arr.shape}")
+                    return arr
+            except Exception as e:
+                print(f"  .{attr} extraction failed: {e}")
+
+    # Try converting list to numpy array directly
+    try:
+        arr = np.array(states)
+        print(f"  np.array(states): shape={arr.shape}, dtype={arr.dtype}")
+        if arr.ndim == 2 and arr.shape[1] >= 3:
+            return arr[:, :3].astype(np.float64)
+    except Exception:
+        pass
 
     return None
 
