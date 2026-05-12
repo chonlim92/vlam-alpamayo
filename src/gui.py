@@ -658,9 +658,6 @@ def build_gui() -> gr.Blocks:
 
     with gr.Blocks(
         title="VLAM-Alpamayo — Autonomous Driving Reasoning",
-        theme=DARK_THEME,
-        css=CUSTOM_CSS,
-        js=FORCE_DARK_JS,
     ) as app:
 
         # ── Header ───────────────────────────────────────────────────
@@ -796,7 +793,6 @@ def build_gui() -> gr.Blocks:
                                     label="Bird's-Eye-View Trajectory",
                                     interactive=True,
                                     height=350,
-                                    show_fullscreen_button=True,
                                 )
                             with gr.Column(scale=1, min_width=220):
                                 gr.HTML('<p class="section-title">Metrics</p>')
@@ -915,6 +911,9 @@ def launch_gui(config: AppConfig | None = None, share: bool = False):
         server_name=_config.gui_host,
         server_port=_config.gui_port,
         share=share,
+        theme=DARK_THEME,
+        css=CUSTOM_CSS,
+        js=FORCE_DARK_JS,
     )
 
 
