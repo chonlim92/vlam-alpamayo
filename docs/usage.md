@@ -34,7 +34,10 @@ python -m src.cli run --output results/my_result.json
 
 Each run generates:
 - A **JSON** file with the reasoning trace and trajectory data
-- An **annotated MP4 video** in the `output/` folder with camera frames, BEV trajectory overlay, reasoning text, and a timeline bar
+- An **annotated MP4 video** (H.264) in the `output/` folder with camera frames, BEV trajectory overlay, reasoning text, and a timeline bar
+
+> **Note:** Video generation requires **ffmpeg** installed at the system level (`sudo apt install ffmpeg`).
+> Without it, videos are saved with the mp4v codec which browsers cannot play (shows "NaN:NaN").
 
 ### Visual Question Answering (Alpamayo 1.5 only)
 
@@ -74,7 +77,7 @@ The web GUI (powered by Gradio) has three tabs:
 6. Click **Run Reasoning** to generate output
 
 Results appear in three sub-tabs:
-- **📹 Video** — Annotated video with camera frames, BEV trajectory mini-map, scrolling reasoning text, and timeline bar. Auto-plays in the browser.
+- **📹 Video** — Annotated video with camera frames, BEV trajectory mini-map, scrolling reasoning text, and timeline bar. Auto-plays in the browser. Requires ffmpeg for H.264 encoding.
 - **🗺️ Trajectory** — Interactive BEV trajectory plot image showing predicted waypoints.
 - **📝 Text** — Full reasoning trace and trajectory metadata.
 

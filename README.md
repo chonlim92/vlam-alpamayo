@@ -36,6 +36,7 @@ This project supports **14 driving datasets** streamed on-demand from Hugging Fa
 | **CUDA Toolkit** | 12.x (for Flash Attention 2; optional if using SDPA fallback) |
 | **Transformers** | ≥ 4.57.1 |
 | **DeepSpeed** | ≥ 0.17.4 |
+| **ffmpeg** | System package — **required** for browser-playable video output |
 
 ### Hugging Face Access
 
@@ -86,6 +87,25 @@ source .alpamayo_venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+
+### 3b. Install ffmpeg (for video playback)
+
+The GUI and CLI generate annotated MP4 videos. Browsers require H.264 encoding,
+which needs ffmpeg installed at the system level:
+
+```bash
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y ffmpeg
+
+# macOS
+brew install ffmpeg
+
+# Conda (any OS)
+conda install -c conda-forge ffmpeg
+```
+
+Verify: `ffmpeg -version`. Without ffmpeg, videos will be saved with the mp4v
+codec which most browsers cannot play (you'll see "NaN:NaN" in the player).
 
 ### 4. Install Flash Attention 2 and Alpamayo models
 
@@ -247,6 +267,11 @@ Copy `config/.env.sample` to `config/.env` and edit. Environment variables overr
 
 ## Troubleshooting
 
+### Video shows "NaN:NaN" or won't play in the browser
+
+**ffmpeg is not installed.** The video was saved with the mp4v codec which browsers can't play.
+Install ffmpeg (see step 3b above) and re-run. The app will automatically encode to H.264.
+
 ### CUDA out-of-memory
 
 - Ensure your GPU has ≥ 24 GB VRAM
@@ -300,5 +325,5 @@ The model weights are ~22 GB. On a 100 MB/s connection, expect ~2.5 minutes. Wei
 | **NumPy** | Numerical operations for trajectory processing, coordinate transforms, and visualization |
 | **argparse** | CLI framework with subcommands (`run`, `vqa`, `gui`, `info`), dataset/model selection |
 | **python-dotenv** | Configuration management via `config/.env` (from `.env.sample` template) with environment variable overrides |
-| **ffmpeg** | Optional H.264 re-encoding for browser-compatible video playback |
+| **ffmpeg** | Optional H.264 re-encoding for browser-compatible video playback — **required** for video display in the GUI |
 | **Git / GitHub** | Version control and collaborative development |

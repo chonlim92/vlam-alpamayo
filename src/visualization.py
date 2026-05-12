@@ -79,16 +79,9 @@ def render_result_video(
         annotated.append(canvas)
 
     # ── Write video ──────────────────────────────────────────────────────
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(video_path), fourcc, fps, (w, h))
-    for f in annotated:
-        writer.write(f)
-    writer.release()
+    video_path = _write_browser_compatible_video(annotated, video_path, fps, w, h)
 
-    # Try to re-encode with H.264 for browser compatibility
-    h264_path = _reencode_h264(video_path)
-
-    return str(h264_path)
+    return str(video_path)
 
 
 def render_trajectory_plot(trajectory: dict | None) -> np.ndarray | None:
@@ -406,7 +399,7 @@ def _reencode_h264(mp4v_path: Path) -> Path:
     h264_path = mp4v_path.with_suffix(".h264.mp4")
     try:
         import subprocess
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg", "-y", "-i", str(mp4v_path),
                 "-c:v", "libx264", "-preset", "fast",
@@ -414,11 +407,104 @@ def _reencode_h264(mp4v_path: Path) -> Path:
                 str(h264_path),
             ],
             capture_output=True,
+            text=True,
             timeout=120,
         )
         if h264_path.exists() and h264_path.stat().st_size > 0:
             mp4v_path.unlink()
             return h264_path
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        print(f"ffmpeg re-encode produced empty file: {result.stderr[:200]}")
+    except FileNotFoundError:
+        print(
+            "WARNING: ffmpeg not found — video saved with mp4v codec which "
+            "browsers cannot play. Install ffmpeg:\n"
+            "  Ubuntu/Debian: sudo apt install ffmpeg\n"
+            "  macOS: brew install ffmpeg\n"
+            "  conda: conda install -c conda-forge ffmpeg"
+        )
+    except subprocess.TimeoutExpired:
+        print("WARNING: ffmpeg re-encode timed out")
+    except Exception as e:
+        print(f"WARNING: ffmpeg re-encode failed: {e}")
     return mp4v_path
+
+
+def _write_browser_compatible_video(
+    frames: list[np.ndarray],
+    video_path: Path,
+    fps: int,
+    w: int,
+    h: int,
+) -> Path:
+    """Write frames to a browser-playable MP4 (H.264).
+
+    Strategy (in priority order):
+    1. imageio-ffmpeg — writes H.264 directly via bundled ffmpeg
+    2. PyAV (av package) — writes H.264 via libavcodec bindings
+    3. OpenCV H.264 — only works if system ffmpeg backend is compiled in
+    4. OpenCV mp4v + ffmpeg re-encode — write mp4v then re-encode
+    5. OpenCV mp4v fallback — browsers can't play but file is valid
+    """
+
+    # Strategy 1: imageio-ffmpeg
+    try:
+        import imageio.v3 as iio
+        h264_path = video_path.with_suffix(".mp4")
+        with iio.imopen(str(h264_path), "w", plugin="pyav") as writer:
+            writer.init_video_stream("libx264", fps=fps)
+            for frame in frames:
+                # imageio expects RGB
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                writer.write_frame(rgb)
+        if h264_path.exists() and h264_path.stat().st_size > 0:
+            return h264_path
+    except Exception:
+        pass
+
+    # Strategy 2: PyAV
+    try:
+        import av as _av
+        h264_path = video_path.with_suffix(".mp4")
+        container = _av.open(str(h264_path), mode="w")
+        stream = container.add_stream("libx264", rate=fps)
+        stream.width = w
+        stream.height = h
+        stream.pix_fmt = "yuv420p"
+        stream.options = {"preset": "fast"}
+        for frame in frames:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            av_frame = _av.VideoFrame.from_ndarray(rgb, format="rgb24")
+            for packet in stream.encode(av_frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+        container.close()
+        if h264_path.exists() and h264_path.stat().st_size > 0:
+            return h264_path
+    except Exception:
+        pass
+
+    # Strategy 3: OpenCV H.264
+    h264_path = video_path.with_suffix(".mp4")
+    for codec in ("avc1", "x264", "H264"):
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            writer = cv2.VideoWriter(str(h264_path), fourcc, fps, (w, h))
+            if writer.isOpened():
+                for f in frames:
+                    writer.write(f)
+                writer.release()
+                if h264_path.exists() and h264_path.stat().st_size > 0:
+                    return h264_path
+            writer.release()
+        except Exception:
+            continue
+
+    # Strategy 4: OpenCV mp4v + ffmpeg re-encode
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, fps, (w, h))
+    for f in frames:
+        writer.write(f)
+    writer.release()
+
+    return _reencode_h264(video_path)
