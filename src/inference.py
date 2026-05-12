@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+import numpy as np
 import torch
 
 from src.config import AppConfig
@@ -55,15 +56,26 @@ class InferenceEngine:
 
         print("Running Chain-of-Causation reasoning...")
 
-        result = self.model.sample_trajectories_from_data_with_vlm_rollout(
-            data_sample,
-            num_traj_samples=self.config.num_traj_samples,
-        )
+        # Note: non-SDK samples need custom preprocessing; this is a placeholder
+        # for future support of other data formats.
+        try:
+            pred_xyz, pred_rot, extra = (
+                self.model.sample_trajectories_from_data_with_vlm_rollout(
+                    data=data_sample,
+                    num_traj_samples=self.config.num_traj_samples,
+                    return_extra=True,
+                )
+            )
+            reasoning = extra.get("cot", [""])[0] if extra else ""
+            trajectory = self._format_trajectory(pred_xyz)
+        except (ValueError, TypeError) as e:
+            reasoning = f"(inference failed — data format may be incompatible: {e})"
+            trajectory = None
 
         output = {
             "model": MODEL_INFO[self.model_key]["name"],
-            "reasoning_trace": result.get("reasoning", ""),
-            "trajectory": self._format_trajectory(result.get("trajectory")),
+            "reasoning_trace": reasoning,
+            "trajectory": trajectory,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -219,18 +231,17 @@ class InferenceEngine:
         # Try model inference if model is loaded and camera data is present
         trajectory = None
         model_reasoning = ""
+        gt_future_xyz = None
         if self.model is not None and has_camera:
             try:
-                print(f"Running model inference on clip {clip_id}...")
-                model_result = self.model.sample_trajectories_from_data_with_vlm_rollout(
-                    sample,
-                    num_traj_samples=self.config.num_traj_samples,
+                model_reasoning, trajectory, gt_future_xyz = self._run_sdk_inference(
+                    clip_id, sample,
                 )
-                model_reasoning = model_result.get("reasoning", "")
-                trajectory = self._format_trajectory(model_result.get("trajectory"))
             except Exception as e:
                 model_reasoning = f"(model inference failed: {e})"
                 print(f"  Model inference error: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Build reasoning text — combine model output + parquet CoC annotations
         n_frames = len(sample['camera_front_wide_120fov']) if has_camera else 0
@@ -245,24 +256,10 @@ class InferenceEngine:
         ]
 
         # Show trajectory metrics (ADE/FDE) if model predicted trajectory
-        if trajectory and has_traj:
-            import numpy as np
-            gt_wps = sample.get("trajectory")
-            if gt_wps is not None:
-                gt_wps = np.array(gt_wps)
-                pred_wps = np.array(trajectory.get("waypoints", []))
-                if pred_wps.ndim == 3:
-                    pred_wps = pred_wps[0]
-                if gt_wps.shape[0] > 0 and pred_wps.shape[0] > 0:
-                    min_len = min(len(gt_wps), len(pred_wps))
-                    ade = float(np.mean(np.linalg.norm(
-                        gt_wps[:min_len, :2] - pred_wps[:min_len, :2], axis=1)))
-                    fde = float(np.linalg.norm(
-                        gt_wps[min_len - 1, :2] - pred_wps[min_len - 1, :2]))
-                    lines.append(f"| **ADE** | {ade:.2f} m |")
-                    lines.append(f"| **FDE** | {fde:.2f} m |")
-                    # Store in trajectory dict for BEV plot
-                    trajectory["gt_waypoints"] = gt_wps.tolist()
+        if trajectory and trajectory.get("min_ade") is not None:
+            lines.append(f"| **minADE** | {trajectory['min_ade']:.2f} m |")
+        if trajectory and trajectory.get("min_fde") is not None:
+            lines.append(f"| **minFDE** | {trajectory['min_fde']:.2f} m |")
 
         # Trajectory summary
         if has_traj:
@@ -343,6 +340,123 @@ class InferenceEngine:
             "answer": result.get("text", ""),
             "timestamp": datetime.now().isoformat(),
         }
+
+    def _run_sdk_inference(
+        self, clip_id: str, sample: dict,
+    ) -> tuple[str, dict | None, np.ndarray | None]:
+        """Run model inference on an SDK sample using the proper Alpamayo pipeline.
+
+        Uses the SDK's ``load_physical_aiavdataset`` to prepare model-ready input
+        (tokenized chat, ego history tensors), then calls the model with the
+        correct API: ``sample_trajectories_from_data_with_vlm_rollout``.
+
+        Returns:
+            (reasoning_text, trajectory_dict, gt_future_xyz)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded")
+
+        print(f"  Preparing model input for clip {clip_id}...")
+
+        # ── Load model-ready data via SDK ─────────────────────────────
+        if self.model_key == "alpamayo-1.5":
+            from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+            from alpamayo1_5 import helper
+        else:
+            from alpamayo_r1.load_physical_aiavdataset import load_physical_aiavdataset
+            from alpamayo_r1 import helper
+
+        data = load_physical_aiavdataset(clip_id)
+        print(f"  SDK data loaded: {list(data.keys())}")
+
+        # ── Build chat messages from camera frames ────────────────────
+        messages = helper.create_message(
+            frames=data["image_frames"].flatten(0, 1),
+            camera_indices=data["camera_indices"],
+        )
+
+        # ── Tokenize ──────────────────────────────────────────────────
+        processor = helper.get_processor(self.model.tokenizer)
+        inputs = processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=False,
+            continue_final_message=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+
+        # ── Build model inputs ────────────────────────────────────────
+        model_inputs = {
+            "tokenized_data": inputs,
+            "ego_history_xyz": data["ego_history_xyz"],
+            "ego_history_rot": data["ego_history_rot"],
+        }
+        model_inputs = helper.to_device(model_inputs, "cuda")
+
+        # ── Run inference ─────────────────────────────────────────────
+        print(f"  Running model inference (num_traj_samples={self.config.num_traj_samples})...")
+        torch.cuda.manual_seed_all(42)
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            pred_xyz, pred_rot, extra = (
+                self.model.sample_trajectories_from_data_with_vlm_rollout(
+                    data=model_inputs,
+                    top_p=0.98,
+                    temperature=0.6,
+                    num_traj_samples=self.config.num_traj_samples,
+                    max_generation_length=256,
+                    return_extra=True,
+                )
+            )
+
+        # ── Extract Chain-of-Causation reasoning ─────────────────────
+        cot_list = extra.get("cot", []) if extra else []
+        reasoning = cot_list[0] if cot_list else "(no reasoning generated)"
+        print(f"  CoC reasoning: {len(reasoning)} chars")
+
+        # ── Format trajectory ─────────────────────────────────────────
+        # pred_xyz shape: (batch, n_group, n_traj_samples, n_future_steps, 3)
+        pred_np = pred_xyz.cpu().numpy()
+        # Squeeze batch/group dims → (n_traj_samples, n_future_steps, 3)
+        while pred_np.ndim > 3:
+            pred_np = pred_np[0]
+        # For BEV plot: primary trajectory is [0] → (n_future_steps, 2)
+        primary_xy = pred_np[0, :, :2]
+
+        trajectory = {
+            "waypoints": primary_xy.tolist(),
+            "all_samples": pred_np[:, :, :2].tolist() if pred_np.shape[0] > 1 else None,
+            "horizon_seconds": 6.4,
+            "frequency_hz": 10,
+            "num_waypoints": primary_xy.shape[0],
+        }
+
+        # ── Compute minADE / minFDE against ground truth ─────────────
+        gt_future_xyz = None
+        if "ego_future_xyz" in data:
+            gt_xy = data["ego_future_xyz"].cpu().numpy()
+            while gt_xy.ndim > 2:
+                gt_xy = gt_xy[0]
+            gt_future_xyz = gt_xy
+            gt_xy_2d = gt_xy[:, :2]  # (n_future_steps, 2)
+
+            # pred_np: (n_traj_samples, n_future_steps, 3)
+            pred_xy_all = pred_np[:, :, :2]  # (n_traj_samples, n_future_steps, 2)
+            n_steps = min(gt_xy_2d.shape[0], pred_xy_all.shape[1])
+            # ADE per sample: mean displacement over timesteps
+            displacements = np.linalg.norm(
+                pred_xy_all[:, :n_steps] - gt_xy_2d[None, :n_steps], axis=2,
+            )  # (n_traj_samples, n_steps)
+            ade_per_sample = displacements.mean(axis=1)
+            fde_per_sample = np.linalg.norm(
+                pred_xy_all[:, n_steps - 1] - gt_xy_2d[n_steps - 1], axis=1,
+            )
+            trajectory["min_ade"] = float(ade_per_sample.min())
+            trajectory["min_fde"] = float(fde_per_sample.min())
+            trajectory["gt_waypoints"] = gt_xy_2d.tolist()
+            print(f"  minADE: {trajectory['min_ade']:.2f}m, minFDE: {trajectory['min_fde']:.2f}m")
+
+        return reasoning, trajectory, gt_future_xyz
 
     def _format_trajectory(self, trajectory) -> dict | None:
         """Format trajectory output for serialization."""

@@ -495,6 +495,10 @@ def _format_reasoning_result(result: dict) -> str:
             f"| **Horizon** | {traj.get('horizon_seconds', 'N/A')}s |",
             f"| **Frequency** | {traj.get('frequency_hz', 'N/A')} Hz |",
         ])
+        if traj.get("min_ade") is not None:
+            lines.append(f"| **minADE** | {traj['min_ade']:.2f} m |")
+        if traj.get("min_fde") is not None:
+            lines.append(f"| **minFDE** | {traj['min_fde']:.2f} m |")
 
     return "\n".join(lines)
 
