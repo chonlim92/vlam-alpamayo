@@ -1,7 +1,8 @@
 """Dataset utilities for loading driving scene data."""
 
+import pandas as pd
 from datasets import load_dataset
-from huggingface_hub import login
+from huggingface_hub import hf_hub_download, login
 
 from src.config import AppConfig
 
@@ -13,7 +14,8 @@ DATASETS = {
     # ── NVIDIA primary datasets ───────────────────────────────────────────
     "physical-ai-av": {
         "hf_id": "nvidia/PhysicalAI-Autonomous-Vehicles",
-        "loader": "hf_streaming",
+        "loader": "hf_parquet",
+        "parquet_path": "reasoning/ood_reasoning.parquet",
         "description": (
             "1,700 hours of driving data from 25 countries and 2,500+ cities. "
             "306,152 clips (20s each) with multi-camera (7), LiDAR, and radar coverage. "
@@ -25,7 +27,8 @@ DATASETS = {
     },
     "physical-ai-av-nurec": {
         "hf_id": "nvidia/PhysicalAI-Autonomous-Vehicles-NuRec",
-        "loader": "hf_streaming",
+        "loader": "hf_parquet",
+        "parquet_path": None,
         "description": (
             "918 dynamic neural-reconstructed 3D driving scenes (USDZ format) derived "
             "from the PhysicalAI-AV dataset. Used for closed-loop simulation and "
@@ -156,7 +159,33 @@ def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num
     ds_info = DATASETS[dataset_key]
     login(token=config.huggingface_token)
 
+    loader = ds_info["loader"]
+    if loader == "hf_parquet":
+        return _load_hf_parquet(
+            ds_info["hf_id"], ds_info.get("parquet_path"), num_samples,
+        )
     return _load_hf_streaming(ds_info["hf_id"], num_samples)
+
+
+def _load_hf_parquet(repo_id: str, parquet_path: str | None, num_samples: int) -> list:
+    """Load samples from a specific parquet file in an HF dataset repo.
+
+    Used for large NVIDIA datasets that don't follow standard HF dataset format.
+    """
+    if parquet_path is None:
+        raise ValueError(
+            f"Dataset '{repo_id}' does not have a directly loadable parquet file. "
+            "Use the physical_ai_av SDK or download specific chunks manually."
+        )
+
+    local_path = hf_hub_download(
+        repo_id=repo_id,
+        filename=parquet_path,
+        repo_type="dataset",
+    )
+    df = pd.read_parquet(local_path)
+    rows = df.head(num_samples)
+    return [row.to_dict() for _, row in rows.iterrows()]
 
 
 def _load_hf_streaming(repo_id: str, num_samples: int) -> list:
