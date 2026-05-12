@@ -8,9 +8,9 @@ gradio>=5.0.0
 opencv-python>=4.8.0
 numpy>=1.26.0
 
-# Alpamayo model packages (installed from GitHub)
-# pip install git+https://github.com/NVlabs/alpamayo.git
-# pip install git+https://github.com/NVlabs/alpamayo1.5.git
+# Alpamayo model packages
+alpamayo_r1 @ git+https://github.com/NVlabs/alpamayo.git
+alpamayo1_5 @ git+https://github.com/NVlabs/alpamayo1.5.git
 
 # Flash Attention 2 (optional — requires CUDA Toolkit with nvcc)
 # pip install flash-attn --no-build-isolation
