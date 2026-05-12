@@ -2,6 +2,7 @@
 
 import torch
 from huggingface_hub import login
+from transformers import BitsAndBytesConfig
 
 from src.config import AppConfig
 
@@ -76,13 +77,21 @@ def load_model(config: AppConfig, model_key: str | None = None):
 
     # Use device_map="auto" to spread model across multiple GPUs when needed
     num_gpus = torch.cuda.device_count() if device == "cuda" else 0
-    use_device_map = num_gpus > 1
-    device_map = "auto" if use_device_map else None
+
+    # 4-bit quantization to reduce memory footprint (~20GB → ~5GB)
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=dtype,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    # With 4-bit, model fits on a single GPU — use device 0 to avoid
+    # cross-device tensor errors from device_map="auto" splitting
+    device_map = {"": 0}
 
     print(f"Loading {MODEL_INFO[model_key]['name']} from {model_id}...")
     print(f"  Device: {device}, Dtype: {config.dtype}, Attention: {config.attn_implementation}")
-    if use_device_map:
-        print(f"  Using device_map='auto' across {num_gpus} GPUs")
+    print(f"  Quantization: 4-bit (NF4), single GPU ({num_gpus} available)")
 
     if model_key == "alpamayo-1":
         from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
@@ -92,9 +101,8 @@ def load_model(config: AppConfig, model_key: str | None = None):
             dtype=dtype,
             attn_implementation=config.attn_implementation,
             device_map=device_map,
+            quantization_config=quantization_config,
         )
-        if not use_device_map:
-            model = model.to(device)
     else:
         from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
 
@@ -103,9 +111,8 @@ def load_model(config: AppConfig, model_key: str | None = None):
             dtype=dtype,
             attn_implementation=config.attn_implementation,
             device_map=device_map,
+            quantization_config=quantization_config,
         )
-        if not use_device_map:
-            model = model.to(device)
 
     print(f"Model loaded successfully.")
     return model

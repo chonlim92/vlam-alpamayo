@@ -412,6 +412,14 @@ class InferenceEngine:
         # ── Extract Chain-of-Causation reasoning ─────────────────────
         cot_list = extra.get("cot", []) if extra else []
         reasoning = cot_list[0] if cot_list else "(no reasoning generated)"
+        # Ensure reasoning is a string (may be numpy array or tensor)
+        if not isinstance(reasoning, str):
+            if hasattr(reasoning, 'item'):
+                reasoning = str(reasoning.item())
+            elif hasattr(reasoning, 'tolist'):
+                reasoning = str(reasoning.tolist())
+            else:
+                reasoning = str(reasoning)
         print(f"  CoC reasoning: {len(reasoning)} chars")
 
         # ── Format trajectory ─────────────────────────────────────────
