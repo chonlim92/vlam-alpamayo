@@ -198,8 +198,32 @@ def load_data_action(dataset_key: str, num_samples: int) -> str:
         _data_samples = load_sample_data(
             config, dataset_key=dataset_key, num_samples=int(num_samples),
         )
-        ds_name = DATASETS[dataset_key]["description"][:80]
-        return f"✅  {len(_data_samples)} sample(s) loaded from '{dataset_key}'\n     {ds_name}…"
+
+        # Build status summary
+        n = len(_data_samples)
+        lines = [f"✅  {n} sample(s) loaded from '{dataset_key}'"]
+
+        # Show per-sample info
+        for i, s in enumerate(_data_samples):
+            has_video = "camera_front_wide_120fov" in s
+            has_ego = "egomotion" in s
+            clip_id = s.get("clip_id", "")
+            cluster = s.get("event_cluster", "")
+
+            parts = []
+            if has_video:
+                nf = len(s["camera_front_wide_120fov"]) if isinstance(s.get("camera_front_wide_120fov"), list) else "?"
+                parts.append(f"📹 {nf} frames")
+            if has_ego:
+                parts.append("🗺️ egomotion")
+            if cluster:
+                parts.append(f"🏷️ {cluster}")
+
+            detail = " · ".join(parts) if parts else "metadata only"
+            label = clip_id[:12] + "…" if len(clip_id) > 12 else clip_id
+            lines.append(f"  [{i}] {label}  {detail}")
+
+        return "\n".join(lines)
     except Exception as e:
         return f"❌  Error: {e}"
 
