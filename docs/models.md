@@ -119,6 +119,47 @@ Both models accept:
 
 ---
 
+## Attention Implementation
+
+The `ATTN_IMPLEMENTATION` setting (in `config/.env`) controls how the self-attention computation is executed inside the transformer backbone. Self-attention is the core operation where each token computes relevance scores against all other tokens:
+
+$$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_k}}\right) V$$
+
+where **Q** (Query), **K** (Key), **V** (Value) are projections of the input, and $d_k$ is the key dimension.
+
+### Available Implementations
+
+| Value | Description | Speed | VRAM | Requirements |
+|---|---|---|---|---|
+| `eager` | Standard PyTorch math — always works | Slowest | Highest | None (default) |
+| `flash_attention_2` | [Flash Attention 2](https://github.com/Dao-AILab/flash-attention) — fused CUDA kernel with tiling & recomputation | **Fastest** | **Lowest** | `flash-attn` package |
+
+> **Note:** `sdpa` (PyTorch's `scaled_dot_product_attention`) is **not supported** by the Alpamayo architecture through HuggingFace Transformers. Using it will raise an error.
+
+### How to Set
+
+Edit `config/.env`:
+
+```env
+# Default (always works):
+ATTN_IMPLEMENTATION=eager
+
+# Best performance (requires flash-attn):
+ATTN_IMPLEMENTATION=flash_attention_2
+```
+
+### Installing Flash Attention 2
+
+Flash Attention 2 provides **2–4x speedup** and **5–20x memory reduction** for long sequences. To install:
+
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+Requirements: NVIDIA GPU (Ampere or newer — A100, H100, RTX 30xx/40xx/50xx), CUDA 11.6+, PyTorch 2.0+.
+
+---
+
 ## Hardware Requirements
 
 | Configuration | VRAM Required |

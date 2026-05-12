@@ -8,16 +8,59 @@ from src.data_loader import get_dataset_info, load_sample_data, DATASETS, DATASE
 from src.inference import InferenceEngine
 from src.visualization import render_result_video, render_trajectory_plot
 
-# ── Custom CSS — Dark Professional Theme ──────────────────────────────────────
+# ── Force dark mode via JS (overrides system preference) ──────────────────────
+FORCE_DARK_JS = """
+() => {
+    document.querySelector('body').classList.add('dark');
+    document.documentElement.style.setProperty('color-scheme', 'dark');
+}
+"""
+
+# ── NVIDIA green dark theme ───────────────────────────────────────────────────
+_nvidia_green = gr.themes.Color(
+    c50="#f7fee7", c100="#ecfccb", c200="#d9f99d", c300="#bef264",
+    c400="#a3e635", c500="#76b900", c600="#65a30d", c700="#4d7c0f",
+    c800="#3f6212", c900="#365314", c950="#1a2e05",
+)
+
+DARK_THEME = gr.themes.Default(
+    primary_hue=_nvidia_green,
+    secondary_hue=gr.themes.colors.slate,
+    neutral_hue=gr.themes.colors.slate,
+    font=gr.themes.GoogleFont("Inter"),
+    font_mono=gr.themes.GoogleFont("JetBrains Mono"),
+).set(
+    body_background_fill="*neutral_950",
+    body_background_fill_dark="*neutral_950",
+    body_text_color="*neutral_200",
+    body_text_color_dark="*neutral_200",
+    block_background_fill="*neutral_900",
+    block_background_fill_dark="*neutral_900",
+    block_border_width="1px",
+    block_border_color="*neutral_700",
+    block_border_color_dark="*neutral_700",
+    block_label_text_color="*neutral_300",
+    block_label_text_color_dark="*neutral_300",
+    block_radius="12px",
+    block_shadow="none",
+    input_background_fill="*neutral_800",
+    input_background_fill_dark="*neutral_800",
+    input_border_color="*neutral_600",
+    input_border_color_dark="*neutral_600",
+    input_border_width="1px",
+    input_radius="8px",
+    button_primary_background_fill="*primary_500",
+    button_primary_background_fill_dark="*primary_500",
+    button_primary_text_color="white",
+    button_secondary_background_fill="*neutral_700",
+    button_secondary_background_fill_dark="*neutral_700",
+    button_secondary_border_color="*neutral_600",
+    button_secondary_text_color="*neutral_200",
+)
+
+# ── Custom CSS — only for custom elements, not base Gradio components ─────────
 CUSTOM_CSS = """
-/* ── Global overrides ────────────────────────────────────── */
-body, .gradio-container {
-    background: #0f1117 !important;
-    color: #e2e8f0 !important;
-}
-.gradio-container {
-    max-width: 1400px !important;
-}
+.gradio-container { max-width: 1400px !important; }
 
 /* ── Header ──────────────────────────────────────────────── */
 .header-container {
@@ -32,282 +75,88 @@ body, .gradio-container {
 }
 .header-container::before {
     content: '';
-    position: absolute;
-    top: -50%;
-    right: -20%;
-    width: 400px;
-    height: 400px;
+    position: absolute; top: -50%; right: -20%;
+    width: 400px; height: 400px;
     background: radial-gradient(circle, rgba(118,185,0,0.08) 0%, transparent 70%);
     pointer-events: none;
 }
 .header-container h1 {
-    color: #ffffff !important;
-    font-size: 2.4em !important;
-    font-weight: 800 !important;
-    margin-bottom: 6px !important;
-    letter-spacing: -0.5px;
+    color: #fff !important; font-size: 2.4em !important;
+    font-weight: 800 !important; margin-bottom: 6px !important;
 }
 .header-container .subtitle {
-    color: #8b9dc3 !important;
-    font-size: 1.05em !important;
-    margin: 0 0 18px !important;
-    line-height: 1.5;
+    color: #8b9dc3 !important; font-size: 1.05em !important;
+    margin: 0 0 18px !important; line-height: 1.5;
 }
-.header-badges {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
+.header-badges { display: flex; gap: 10px; flex-wrap: wrap; }
 .header-badge {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 5px 16px;
-    color: #c8d6e5;
-    font-size: 0.8em;
-    font-weight: 500;
-    backdrop-filter: blur(4px);
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px; padding: 5px 16px; color: #c8d6e5;
+    font-size: 0.8em; font-weight: 500;
 }
 .header-badge-green {
-    background: rgba(118,185,0,0.15);
-    border-color: rgba(118,185,0,0.35);
-    color: #a3d977;
+    background: rgba(118,185,0,0.15); border-color: rgba(118,185,0,0.35); color: #a3d977;
 }
 .header-badge-nvidia {
-    background: rgba(118,185,0,0.08);
-    border-color: rgba(118,185,0,0.2);
-    color: #76b900;
-    font-weight: 700;
+    background: rgba(118,185,0,0.08); border-color: rgba(118,185,0,0.2);
+    color: #76b900; font-weight: 700;
 }
 
-/* ── Panels & blocks ─────────────────────────────────────── */
-.block, .gr-block, .gr-box, .gr-panel,
-div[class*="block"], div[class*="panel"] {
-    background: #161b22 !important;
-    border-color: #21262d !important;
-    border-radius: 12px !important;
-}
-
-/* ── Section headings ────────────────────────────────────── */
+/* ── Section titles ──────────────────────────────────────── */
 .section-title {
-    font-size: 0.72em !important;
-    font-weight: 700 !important;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #76b900 !important;
-    margin-bottom: 14px !important;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #21262d;
+    font-size: 0.72em !important; font-weight: 700 !important;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: #76b900 !important; margin-bottom: 14px !important;
+    padding-bottom: 10px; border-bottom: 1px solid var(--neutral-700);
 }
 
-/* ── Inputs ──────────────────────────────────────────────── */
-input, textarea, select, .gr-input, .gr-dropdown {
-    background: #0d1117 !important;
-    border-color: #30363d !important;
-    color: #e6edf3 !important;
-    border-radius: 8px !important;
-}
-input:focus, textarea:focus, select:focus {
-    border-color: #76b900 !important;
-    box-shadow: 0 0 0 2px rgba(118,185,0,0.15) !important;
-}
-label, .gr-label {
-    color: #8b949e !important;
-    font-weight: 600 !important;
-    font-size: 0.88em !important;
-}
-
-/* ── Status textboxes ────────────────────────────────────── */
-.status-idle textarea {
-    border-left: 3px solid #30363d !important;
-    background: #0d1117 !important;
-    color: #8b949e !important;
-}
-.status-loaded textarea {
-    border-left: 3px solid #76b900 !important;
-    background: #0d1117 !important;
-}
-
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── Run button (NVIDIA green gradient) ──────────────────── */
 .run-btn {
     background: linear-gradient(135deg, #76b900 0%, #5a9e00 100%) !important;
-    border: none !important;
-    color: #fff !important;
-    font-weight: 700 !important;
-    font-size: 1.05em !important;
-    letter-spacing: 0.5px;
-    border-radius: 10px !important;
-    padding: 14px 0 !important;
-    transition: all 0.2s ease !important;
+    border: none !important; color: #fff !important;
+    font-weight: 700 !important; font-size: 1.05em !important;
+    border-radius: 10px !important; padding: 14px 0 !important;
     box-shadow: 0 4px 20px rgba(118,185,0,0.25) !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    transition: all 0.2s ease !important;
 }
 .run-btn:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 8px 30px rgba(118,185,0,0.35) !important;
     background: linear-gradient(135deg, #84d100 0%, #66b300 100%) !important;
 }
-.secondary-btn {
-    background: #21262d !important;
-    border: 1px solid #30363d !important;
-    color: #c9d1d9 !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease !important;
-}
-.secondary-btn:hover {
-    background: #30363d !important;
-    border-color: #484f58 !important;
-}
 
-/* ── Tabs ────────────────────────────────────────────────── */
-.main-tabs button, .output-tabs button {
-    background: transparent !important;
-    color: #8b949e !important;
-    font-weight: 600 !important;
-    font-size: 0.92em !important;
-    padding: 10px 22px !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    transition: all 0.15s ease !important;
-}
-.main-tabs button.selected, .output-tabs button.selected {
-    color: #76b900 !important;
-    border-bottom: 2px solid #76b900 !important;
-    background: rgba(118,185,0,0.05) !important;
-}
-.main-tabs button:hover, .output-tabs button:hover {
-    color: #c9d1d9 !important;
-    background: rgba(255,255,255,0.03) !important;
-}
+/* ── Status left-border accent ───────────────────────────── */
+.status-idle textarea { border-left: 3px solid var(--neutral-600) !important; }
 
-/* ── Output areas ────────────────────────────────────────── */
-.output-tabs {
-    border: 1px solid #21262d;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #0d1117 !important;
-}
-.output-description {
-    color: #6e7681 !important;
-    font-size: 0.82em !important;
-    margin-top: 8px;
-}
+/* ── Output description ──────────────────────────────────── */
+.output-description { color: var(--neutral-400) !important; font-size: 0.82em !important; margin-top: 8px; }
 
 /* ── VQA info banner ─────────────────────────────────────── */
 .vqa-info {
     background: linear-gradient(135deg, #0d1f3c, #122a4a);
-    border: 1px solid #1c3a5e;
-    border-radius: 10px;
-    padding: 18px 22px;
-    margin-bottom: 18px;
+    border: 1px solid #1c3a5e; border-radius: 10px;
+    padding: 18px 22px; margin-bottom: 18px;
 }
-.vqa-info strong {
-    color: #58a6ff;
-}
-.vqa-info p {
-    color: #8b9dc3;
-    margin: 6px 0 0;
-    font-size: 0.92em;
-}
+.vqa-info strong { color: #58a6ff; }
+.vqa-info p { color: #8b9dc3; margin: 6px 0 0; font-size: 0.92em; }
 
 /* ── VQA answer ──────────────────────────────────────────── */
-.vqa-answer-box textarea {
-    font-size: 1.02em !important;
-    line-height: 1.7 !important;
-    background: #0d1117 !important;
-    color: #e6edf3 !important;
-}
+.vqa-answer-box textarea { font-size: 1.02em !important; line-height: 1.7 !important; }
 
-/* ── Tables in Reference tab ─────────────────────────────── */
-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-}
-table th {
-    background: #161b22 !important;
-    color: #76b900 !important;
-    font-weight: 700 !important;
-    font-size: 0.85em !important;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 12px 16px !important;
-    border-bottom: 2px solid #21262d !important;
-}
-table td {
-    padding: 10px 16px !important;
-    border-bottom: 1px solid #21262d !important;
-    color: #c9d1d9 !important;
-    font-size: 0.9em;
-}
-table tr:hover td {
-    background: rgba(118,185,0,0.03) !important;
-}
-table a {
-    color: #58a6ff !important;
-}
+/* ── Table accents ───────────────────────────────────────── */
+table th { color: #76b900 !important; text-transform: uppercase; letter-spacing: 0.5px; }
+table a { color: #58a6ff !important; }
 
-/* ── Sliders ─────────────────────────────────────────────── */
-.compact-slider input[type=range] {
-    height: 4px !important;
-    accent-color: #76b900 !important;
-}
-.compact-slider .progress {
-    background: #76b900 !important;
-}
+/* ── Slider accent ───────────────────────────────────────── */
+.compact-slider input[type=range] { accent-color: #76b900 !important; }
 
 /* ── Footer ──────────────────────────────────────────────── */
 .footer-container {
-    text-align: center;
-    padding: 20px 0 10px;
-    color: #484f58;
-    font-size: 0.82em;
-    border-top: 1px solid #21262d;
-    margin-top: 28px;
+    text-align: center; padding: 20px 0 10px; font-size: 0.82em;
+    color: var(--neutral-500); border-top: 1px solid var(--neutral-700); margin-top: 28px;
 }
-.footer-container a {
-    color: #76b900 !important;
-    text-decoration: none;
-}
-.footer-container a:hover {
-    text-decoration: underline;
-}
-
-/* ── Markdown in dark mode ───────────────────────────────── */
-.prose, .markdown-text, .gr-markdown {
-    color: #c9d1d9 !important;
-}
-.prose h1, .prose h2, .prose h3 {
-    color: #e6edf3 !important;
-}
-.prose code {
-    background: #21262d !important;
-    color: #76b900 !important;
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-/* ── Scrollbar ───────────────────────────────────────────── */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #0d1117;
-}
-::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #484f58;
-}
-
-/* ── Video player ────────────────────────────────────────── */
-video {
-    border-radius: 8px !important;
-    border: 1px solid #21262d !important;
-}
+.footer-container a { color: #76b900 !important; text-decoration: none; }
+.footer-container a:hover { text-decoration: underline; }
 """
 
 # ── Global state ──────────────────────────────────────────────────────────────
@@ -480,6 +329,9 @@ def build_gui() -> gr.Blocks:
 
     with gr.Blocks(
         title="VLAM-Alpamayo — Autonomous Driving Reasoning",
+        theme=DARK_THEME,
+        css=CUSTOM_CSS,
+        js=FORCE_DARK_JS,
     ) as app:
 
         # ── Header ───────────────────────────────────────────────────
@@ -521,9 +373,8 @@ def build_gui() -> gr.Blocks:
                         )
                         load_model_btn = gr.Button(
                             "Load Model",
-                            variant="primary",
+                            variant="secondary",
                             size="sm",
-                            elem_classes="secondary-btn",
                         )
                         model_status = gr.Textbox(
                             label="Model Status",
@@ -547,8 +398,8 @@ def build_gui() -> gr.Blocks:
                         )
                         load_data_btn = gr.Button(
                             "Load Data",
+                            variant="secondary",
                             size="sm",
-                            elem_classes="secondary-btn",
                         )
                         data_status = gr.Textbox(
                             label="Data Status",
@@ -711,7 +562,6 @@ def launch_gui(config: AppConfig | None = None, share: bool = False):
         server_name=_config.gui_host,
         server_port=_config.gui_port,
         share=share,
-        css=CUSTOM_CSS,
     )
 
 
