@@ -60,7 +60,7 @@ DARK_THEME = gr.themes.Default(
 
 # ── Custom CSS — only for custom elements, not base Gradio components ─────────
 CUSTOM_CSS = """
-.gradio-container { max-width: 1400px !important; }
+.gradio-container { max-width: 100% !important; width: 100% !important; padding: 0 2% !important; }
 
 /* ── Header ──────────────────────────────────────────────── */
 .header-container {
