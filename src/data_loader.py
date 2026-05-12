@@ -894,6 +894,63 @@ def _extract_ego_xyz_from_egomotion(ego) -> np.ndarray | None:
     return None
 
 
+def _extract_xyz_from_rigid_transform(pose) -> np.ndarray | None:
+    """Extract xyz translation from a RigidTransform object.
+
+    RigidTransform may expose translation via:
+    - .translation property (ndarray)
+    - .as_matrix() / .matrix / .to_matrix() → 4x4 or Nx4x4 matrices
+    - .position property
+    """
+    pose_type = type(pose).__name__
+    pose_attrs = [a for a in dir(pose) if not a.startswith('_')]
+    print(f"  RigidTransform attrs: {pose_attrs}")
+
+    # Try .translation directly
+    if hasattr(pose, 'translation'):
+        t = pose.translation
+        print(f"  RigidTransform.translation: type={type(t).__name__}")
+        if isinstance(t, np.ndarray):
+            print(f"    shape={t.shape}, dtype={t.dtype}")
+            if t.ndim == 2 and t.shape[1] >= 3:
+                return t[:, :3].astype(np.float64)
+            elif t.ndim == 1 and len(t) >= 3:
+                return t[:3].reshape(1, 3).astype(np.float64)
+
+    # Try getting the 4x4 matrix(ces)
+    for matrix_method in ('as_matrix', 'matrix', 'to_matrix', 'numpy',
+                          'as_numpy', 'homogeneous'):
+        if hasattr(pose, matrix_method):
+            try:
+                val = getattr(pose, matrix_method)
+                mat = val() if callable(val) else val
+                if isinstance(mat, np.ndarray):
+                    print(f"  RigidTransform.{matrix_method}: shape={mat.shape}")
+                    if mat.ndim == 3 and mat.shape[1] == 4 and mat.shape[2] == 4:
+                        # (N, 4, 4) → extract translations
+                        return mat[:, :3, 3].astype(np.float64)
+                    elif mat.ndim == 2 and mat.shape == (4, 4):
+                        return mat[:3, 3].reshape(1, 3).astype(np.float64)
+            except Exception as e:
+                print(f"  RigidTransform.{matrix_method} failed: {e}")
+
+    # Try .position
+    if hasattr(pose, 'position'):
+        p = pose.position
+        if isinstance(p, np.ndarray):
+            print(f"  RigidTransform.position: shape={p.shape}")
+            if p.ndim == 2 and p.shape[1] >= 3:
+                return p[:, :3].astype(np.float64)
+
+    # Log repr for debugging
+    pose_repr = repr(pose)
+    if len(pose_repr) > 200:
+        pose_repr = pose_repr[:200] + "..."
+    print(f"  RigidTransform repr: {pose_repr}")
+
+    return None
+
+
 def _extract_xyz_from_states(states) -> np.ndarray | None:
     """Extract xyz positions from a collection of EgomotionState objects."""
     if isinstance(states, np.ndarray):
@@ -908,9 +965,18 @@ def _extract_xyz_from_states(states) -> np.ndarray | None:
     if not isinstance(states, (list, tuple)):
         s_attrs = [a for a in dir(states) if not a.startswith('_')]
         print(f"  States type: {type(states).__name__}, attrs: {s_attrs}")
+
+        # Check for pose → RigidTransform → extract translation
+        if hasattr(states, 'pose'):
+            pose = states.pose
+            print(f"  States.pose type: {type(pose).__name__}")
+            xyz = _extract_xyz_from_rigid_transform(pose)
+            if xyz is not None:
+                return xyz
+
         # Check for position-like array attributes
         for attr in ('position', 'translation', 'xyz', 'position_m',
-                     'translation_m', 'pose'):
+                     'translation_m'):
             if hasattr(states, attr):
                 val = getattr(states, attr)
                 if isinstance(val, np.ndarray):
@@ -931,8 +997,16 @@ def _extract_xyz_from_states(states) -> np.ndarray | None:
     print(f"  States[0] attrs: {s_attrs}")
 
     # Try common position attribute names
+    for attr in ('pose',):
+        if hasattr(first, attr):
+            pose0 = getattr(first, attr)
+            print(f"  States[0].{attr}: type={type(pose0).__name__}")
+            xyz = _extract_xyz_from_rigid_transform(pose0)
+            if xyz is not None:
+                return xyz
+
     for attr in ('position', 'translation', 'xyz', 'position_m',
-                 'translation_m', 'pose'):
+                 'translation_m'):
         if hasattr(first, attr):
             pos0 = getattr(first, attr)
             print(f"  States[0].{attr}: type={type(pos0).__name__}, value={pos0}")
