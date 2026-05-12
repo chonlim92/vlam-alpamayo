@@ -1,5 +1,7 @@
 """Dataset utilities for loading driving scene data."""
 
+import random
+
 import numpy as np
 import pandas as pd
 from datasets import load_dataset
@@ -449,6 +451,7 @@ def _select_clip_ids(ds, reasoning_df: pd.DataFrame | None, num_samples: int) ->
             camera_ids = set(camera_clips.index)
             both = list(annotated_ids & camera_ids)
             if both:
+                random.shuffle(both)
                 ids = both[:num_samples]
                 print(f"Selected {len(ids)} OOD-annotated clip(s) with camera data "
                       f"(from {len(both)} candidates)")
@@ -456,25 +459,33 @@ def _select_clip_ids(ds, reasoning_df: pd.DataFrame | None, num_samples: int) ->
             # No overlap — try camera-only clips
             print(f"  No OOD-annotated clips have camera data. "
                   f"Using camera-available clips instead.")
-            ids = camera_clips.index[:num_samples].tolist()
+            pool = camera_clips.index.tolist()
+            random.shuffle(pool)
+            ids = pool[:num_samples]
             if ids:
                 print(f"Selected {len(ids)} camera-available clip(s)")
                 return ids
         else:
             # Can't filter by camera — use annotated clips and hope for the best
-            ids = reasoning_df.index[:num_samples].tolist()
+            pool = reasoning_df.index.tolist()
+            random.shuffle(pool)
+            ids = pool[:num_samples]
             if ids:
                 print(f"Selected {len(ids)} OOD-annotated clip(s) (camera availability unknown)")
                 return ids
 
     # No reasoning annotations — use camera-filtered clips if possible
     if camera_clips is not None and len(camera_clips) > 0:
-        ids = camera_clips.index[:num_samples].tolist()
+        pool = camera_clips.index.tolist()
+        random.shuffle(pool)
+        ids = pool[:num_samples]
         print(f"Selected {len(ids)} camera-available clip(s) from clip index")
         return ids
 
     # Final fallback — unfiltered clip index
-    ids = clip_idx.index[:num_samples].tolist()
+    pool = clip_idx.index.tolist()
+    random.shuffle(pool)
+    ids = pool[:num_samples]
     print(f"Selected {len(ids)} clip(s) from clip index (camera availability unknown)")
     return ids
 
@@ -1154,6 +1165,8 @@ def _load_hf_streaming(repo_id: str, num_samples: int, config: str | None = None
             first_split = next(iter(ds.keys()))
             ds = ds[first_split]
 
+    # Shuffle the stream so we get different samples each run
+    ds = ds.shuffle(seed=random.randint(0, 2**31))
     samples = []
     for i, sample in enumerate(ds):
         if i >= num_samples:
