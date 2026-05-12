@@ -709,31 +709,29 @@ def build_gui() -> gr.Blocks:
                     with gr.Column(scale=2):
                         gr.HTML('<p class="section-title">Output</p>')
 
-                        with gr.Tabs(elem_classes="output-tabs"):
-                            with gr.Tab("📹  Video", id="out-video"):
-                                result_video = gr.Video(
-                                    label="Annotated Driving Video",
-                                    interactive=False,
-                                    autoplay=True,
-                                    height=500,
-                                )
-                                gr.HTML(
-                                    '<p class="output-description">Multi-camera composite '
-                                    'with BEV trajectory overlay, reasoning text & timeline.</p>'
-                                )
+                        # ── Video Section ─────────────────────────────
+                        result_video = gr.Video(
+                            label="Annotated Driving Video",
+                            interactive=False,
+                            autoplay=True,
+                            height=420,
+                        )
+                        gr.HTML(
+                            '<p class="output-description">Multi-camera composite '
+                            'with BEV trajectory overlay, reasoning text & timeline.</p>'
+                        )
 
-                            with gr.Tab("🗺️  Trajectory", id="out-traj"):
+                        # ── Trajectory + Metrics (side by side) ───────
+                        with gr.Row():
+                            with gr.Column(scale=2):
+                                gr.HTML('<p class="section-title">Trajectory</p>')
                                 result_traj_img = gr.Image(
                                     label="Bird's-Eye-View Trajectory",
                                     interactive=False,
-                                    height=500,
+                                    height=350,
                                 )
-                                gr.HTML(
-                                    '<p class="output-description">Predicted 6.4s future trajectory '
-                                    '(64 waypoints @ 10 Hz) in ego-vehicle BEV coordinates.</p>'
-                                )
-
-                            with gr.Tab("📊  Metrics", id="out-metrics"):
+                            with gr.Column(scale=1, min_width=220):
+                                gr.HTML('<p class="section-title">Metrics</p>')
                                 metrics_ade = gr.Number(
                                     label="minADE (m)",
                                     value=None,
@@ -749,11 +747,6 @@ def build_gui() -> gr.Blocks:
                                 metrics_summary = gr.Markdown(
                                     value="*Run inference to see trajectory metrics.*",
                                     elem_classes="coc-panel",
-                                )
-                                gr.HTML(
-                                    '<p class="output-description">Trajectory evaluation: '
-                                    'Average Displacement Error (ADE) and Final Displacement Error (FDE) '
-                                    'between predicted and ground-truth trajectories.</p>'
                                 )
 
                 # Wire events
