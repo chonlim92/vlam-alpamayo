@@ -161,20 +161,42 @@ table a { color: #58a6ff !important; }
     color: var(--neutral-200) !important;
     border-color: var(--neutral-600) !important;
 }
-/* Radio button items */
+/* Radio button items — force dark background, no white/light grey anywhere */
 .gradio-container .wrap input[type="radio"] + label,
 .gradio-container label.svelte-1qxm7ko,
-.gradio-container span.svelte-1qxm7ko {
+.gradio-container span.svelte-1qxm7ko,
+.gradio-container .gr-radio label,
+.gradio-container .gr-radio .wrap label,
+.gradio-container [data-testid="radio"] label,
+.gradio-container [role="radiogroup"] label,
+.gradio-container [role="radiogroup"] > label,
+.gradio-container .gr-radio .wrap,
+.gradio-container .gr-form .wrap {
     background: var(--neutral-800) !important;
+    background-color: var(--neutral-800) !important;
     color: var(--neutral-200) !important;
     border-color: var(--neutral-600) !important;
 }
 /* Radio selected state */
 .gradio-container input[type="radio"]:checked + label,
-.gradio-container .selected {
-    background: rgba(118,185,0,0.15) !important;
+.gradio-container .selected,
+.gradio-container [role="radiogroup"] label.selected,
+.gradio-container [role="radiogroup"] label[data-selected],
+.gradio-container [role="radiogroup"] label[aria-checked="true"] {
+    background: rgba(118,185,0,0.2) !important;
+    background-color: rgba(118,185,0,0.2) !important;
     border-color: #76b900 !important;
     color: #d4e8b0 !important;
+}
+/* Kill any white/light backgrounds on form groups and wrappers */
+.gradio-container .gr-group,
+.gradio-container .gr-box,
+.gradio-container .gr-form,
+.gradio-container .gr-panel,
+.gradio-container .block,
+.gradio-container .form {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 /* Dropdown option list */
 .gradio-container ul[role="listbox"],

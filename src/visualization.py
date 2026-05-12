@@ -88,6 +88,8 @@ def render_result_video(
             _draw_bev_minimap(canvas, wps, idx, total)
             # Also draw trajectory on the camera view (simple BEV→image projection)
             _draw_trajectory_on_camera(canvas, wps, idx, total)
+            # Per-frame trajectory info (top-left)
+            _draw_frame_trajectory_info(canvas, wps, idx, total)
 
         # ── Reasoning text overlay (bottom) ──────────────────────────────
         visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 6, 0))
@@ -160,6 +162,19 @@ def render_trajectory_plot(trajectory: dict | np.ndarray | None) -> np.ndarray |
         img, f"{n_wp} pts | {horizon}s @ {freq}Hz",
         (10, size - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1,
     )
+
+    # ADE / FDE metrics (if ground truth available)
+    if isinstance(trajectory, dict) and trajectory.get("gt_waypoints") is not None:
+        gt = np.array(trajectory["gt_waypoints"])
+        pred = waypoints[0] if waypoints.ndim == 3 else waypoints
+        if gt.shape[0] > 0 and pred.shape[0] > 0:
+            min_len = min(len(gt), len(pred))
+            ade = np.mean(np.linalg.norm(gt[:min_len, :2] - pred[:min_len, :2], axis=1))
+            fde = np.linalg.norm(gt[min_len - 1, :2] - pred[min_len - 1, :2])
+            cv2.putText(
+                img, f"ADE: {ade:.2f}m  FDE: {fde:.2f}m",
+                (10, size - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 180, 50), 1,
+            )
 
     return img
 
@@ -469,6 +484,57 @@ def _draw_timeline(canvas: np.ndarray, idx: int, total: int) -> None:
     progress = (idx + 1) / max(total, 1)
     cv2.rectangle(canvas, (0, h - bar_h), (w, h), (60, 60, 60), -1)
     cv2.rectangle(canvas, (0, h - bar_h), (int(w * progress), h), (118, 185, 0), -1)
+
+
+def _draw_frame_trajectory_info(
+    canvas: np.ndarray,
+    wps: np.ndarray,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    """Draw per-frame trajectory position, speed, and heading on the video."""
+    h, w = canvas.shape[:2]
+    if wps.ndim != 2 or wps.shape[0] < 2:
+        return
+
+    # Map frame index to trajectory index
+    traj_idx = min(int(frame_idx / max(total_frames, 1) * len(wps)), len(wps) - 1)
+    x, y = wps[traj_idx, 0], wps[traj_idx, 1]
+
+    # Compute instantaneous speed (distance between consecutive points)
+    if traj_idx > 0:
+        dx = wps[traj_idx, 0] - wps[traj_idx - 1, 0]
+        dy = wps[traj_idx, 1] - wps[traj_idx - 1, 1]
+        dist = np.sqrt(dx**2 + dy**2)
+        # Estimate dt from total trajectory / total points
+        total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
+        heading_deg = np.degrees(np.arctan2(dy, dx))
+    else:
+        dist = 0.0
+        total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
+        heading_deg = 0.0
+
+    # Semi-transparent info box (top-left)
+    box_w, box_h = 280, 90
+    margin = 15
+    overlay = canvas.copy()
+    cv2.rectangle(overlay, (margin, margin), (margin + box_w, margin + box_h), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
+    cv2.rectangle(canvas, (margin, margin), (margin + box_w, margin + box_h), (80, 80, 80), 1)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fs = 0.45
+    c = (200, 200, 200)
+    g = (118, 185, 0)
+    y_pos = margin + 20
+
+    cv2.putText(canvas, f"Frame {frame_idx+1}/{total_frames}", (margin + 8, y_pos), font, fs, g, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Traj pt {traj_idx+1}/{len(wps)}", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    y_pos += 22
+    cv2.putText(canvas, f"Pos: ({x:.1f}, {y:.1f}) m", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    y_pos += 22
+    cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:

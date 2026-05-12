@@ -244,6 +244,36 @@ class InferenceEngine:
             f"| **Trajectory** | {'loaded' if has_traj else 'not available'} |",
         ]
 
+        # Show trajectory metrics (ADE/FDE) if model predicted trajectory
+        if trajectory and has_traj:
+            import numpy as np
+            gt_wps = sample.get("trajectory")
+            if gt_wps is not None:
+                gt_wps = np.array(gt_wps)
+                pred_wps = np.array(trajectory.get("waypoints", []))
+                if pred_wps.ndim == 3:
+                    pred_wps = pred_wps[0]
+                if gt_wps.shape[0] > 0 and pred_wps.shape[0] > 0:
+                    min_len = min(len(gt_wps), len(pred_wps))
+                    ade = float(np.mean(np.linalg.norm(
+                        gt_wps[:min_len, :2] - pred_wps[:min_len, :2], axis=1)))
+                    fde = float(np.linalg.norm(
+                        gt_wps[min_len - 1, :2] - pred_wps[min_len - 1, :2]))
+                    lines.append(f"| **ADE** | {ade:.2f} m |")
+                    lines.append(f"| **FDE** | {fde:.2f} m |")
+                    # Store in trajectory dict for BEV plot
+                    trajectory["gt_waypoints"] = gt_wps.tolist()
+
+        # Trajectory summary
+        if has_traj:
+            ego_xyz = sample.get("ego_history_xyz")
+            if ego_xyz is not None:
+                import numpy as np
+                ego_xyz = np.array(ego_xyz)
+                total_dist = float(np.sum(np.linalg.norm(
+                    np.diff(ego_xyz[:, :2], axis=0), axis=1)))
+                lines.append(f"| **Track Length** | {total_dist:.1f} m ({len(ego_xyz)} pts) |")
+
         # Model reasoning (if ran)
         if model_reasoning:
             lines.extend([

@@ -460,6 +460,11 @@ def _load_physical_ai_av_sdk(config: AppConfig, num_samples: int) -> list:
                 sample["ego_history_xyz"] = ego_xyz
                 sample["trajectory"] = ego_xyz[:, :2]  # x,y for BEV plot
                 print(f"  Egomotion: loaded ({len(ego_xyz)} waypoints, shape {ego_xyz.shape})")
+                # Also extract rotation (needed by model)
+                ego_rot = _extract_ego_rot_from_egomotion(ego)
+                if ego_rot is not None:
+                    sample["ego_history_rot"] = ego_rot
+                    print(f"  Rotation: {ego_rot.shape}")
             else:
                 print("  Egomotion: loaded (no xyz extracted — see diagnostics)")
         except Exception as e:
@@ -902,7 +907,6 @@ def _extract_xyz_from_rigid_transform(pose) -> np.ndarray | None:
     - .as_matrix() / .matrix / .to_matrix() → 4x4 or Nx4x4 matrices
     - .position property
     """
-    pose_type = type(pose).__name__
     pose_attrs = [a for a in dir(pose) if not a.startswith('_')]
     print(f"  RigidTransform attrs: {pose_attrs}")
 
@@ -918,21 +922,12 @@ def _extract_xyz_from_rigid_transform(pose) -> np.ndarray | None:
                 return t[:3].reshape(1, 3).astype(np.float64)
 
     # Try getting the 4x4 matrix(ces)
-    for matrix_method in ('as_matrix', 'matrix', 'to_matrix', 'numpy',
-                          'as_numpy', 'homogeneous'):
-        if hasattr(pose, matrix_method):
-            try:
-                val = getattr(pose, matrix_method)
-                mat = val() if callable(val) else val
-                if isinstance(mat, np.ndarray):
-                    print(f"  RigidTransform.{matrix_method}: shape={mat.shape}")
-                    if mat.ndim == 3 and mat.shape[1] == 4 and mat.shape[2] == 4:
-                        # (N, 4, 4) → extract translations
-                        return mat[:, :3, 3].astype(np.float64)
-                    elif mat.ndim == 2 and mat.shape == (4, 4):
-                        return mat[:3, 3].reshape(1, 3).astype(np.float64)
-            except Exception as e:
-                print(f"  RigidTransform.{matrix_method} failed: {e}")
+    mat = _get_rigid_transform_matrices(pose)
+    if mat is not None:
+        if mat.ndim == 3 and mat.shape[1] == 4 and mat.shape[2] == 4:
+            return mat[:, :3, 3].astype(np.float64)
+        elif mat.ndim == 2 and mat.shape == (4, 4):
+            return mat[:3, 3].reshape(1, 3).astype(np.float64)
 
     # Try .position
     if hasattr(pose, 'position'):
@@ -948,6 +943,116 @@ def _extract_xyz_from_rigid_transform(pose) -> np.ndarray | None:
         pose_repr = pose_repr[:200] + "..."
     print(f"  RigidTransform repr: {pose_repr}")
 
+    return None
+
+
+def _get_rigid_transform_matrices(pose) -> np.ndarray | None:
+    """Get the raw 4x4 matrices from a RigidTransform object."""
+    for matrix_method in ('as_matrix', 'matrix', 'to_matrix', 'numpy',
+                          'as_numpy', 'homogeneous'):
+        if hasattr(pose, matrix_method):
+            try:
+                val = getattr(pose, matrix_method)
+                mat = val() if callable(val) else val
+                if isinstance(mat, np.ndarray):
+                    print(f"  RigidTransform.{matrix_method}: shape={mat.shape}")
+                    if mat.ndim in (2, 3):
+                        return mat
+            except Exception as e:
+                print(f"  RigidTransform.{matrix_method} failed: {e}")
+    return None
+
+
+def _extract_rot_from_rigid_transform(pose) -> np.ndarray | None:
+    """Extract rotation quaternions (N, 4) [w,x,y,z] from a RigidTransform."""
+    # Try .rotation property first
+    if hasattr(pose, 'rotation'):
+        rot = pose.rotation
+        print(f"  RigidTransform.rotation: type={type(rot).__name__}")
+        if isinstance(rot, np.ndarray):
+            print(f"    shape={rot.shape}")
+            if rot.ndim == 2:
+                if rot.shape[1] == 4:  # already quaternions
+                    return rot.astype(np.float64)
+                if rot.shape[1] == 9:  # flattened 3x3
+                    rot = rot.reshape(-1, 3, 3)
+            if rot.ndim == 3 and rot.shape[1:] == (3, 3):
+                return _rotmat_to_quat(rot)
+        # Might be a Rotation-like object
+        if hasattr(rot, 'as_quat'):
+            q = rot.as_quat()  # scipy returns [x,y,z,w]
+            if isinstance(q, np.ndarray):
+                if q.ndim == 2 and q.shape[1] == 4:
+                    return q[:, [3, 0, 1, 2]].astype(np.float64)  # → [w,x,y,z]
+                elif q.ndim == 1 and len(q) == 4:
+                    return q[[3, 0, 1, 2]].reshape(1, 4).astype(np.float64)
+        if hasattr(rot, 'as_matrix'):
+            m = rot.as_matrix()
+            if isinstance(m, np.ndarray):
+                if m.ndim == 3 and m.shape[1:] == (3, 3):
+                    return _rotmat_to_quat(m)
+
+    # Fallback: extract from 4x4 matrices
+    mat = _get_rigid_transform_matrices(pose)
+    if mat is not None:
+        if mat.ndim == 3 and mat.shape[1] == 4 and mat.shape[2] == 4:
+            return _rotmat_to_quat(mat[:, :3, :3])
+        elif mat.ndim == 2 and mat.shape == (4, 4):
+            return _rotmat_to_quat(mat[:3, :3].reshape(1, 3, 3))
+
+    return None
+
+
+def _rotmat_to_quat(R: np.ndarray) -> np.ndarray:
+    """Convert (N, 3, 3) rotation matrices to (N, 4) quaternions [w,x,y,z]."""
+    try:
+        from scipy.spatial.transform import Rotation
+        q = Rotation.from_matrix(R).as_quat()  # [x,y,z,w]
+        if q.ndim == 1:
+            q = q.reshape(1, 4)
+        return q[:, [3, 0, 1, 2]].astype(np.float64)  # → [w,x,y,z]
+    except ImportError:
+        pass
+
+    # Manual Shepperd's method fallback
+    N = R.shape[0]
+    q = np.zeros((N, 4), dtype=np.float64)
+    for i in range(N):
+        m = R[i]
+        tr = m[0, 0] + m[1, 1] + m[2, 2]
+        if tr > 0:
+            s = 0.5 / np.sqrt(tr + 1.0)
+            q[i] = [0.25 / s, (m[2, 1] - m[1, 2]) * s,
+                    (m[0, 2] - m[2, 0]) * s, (m[1, 0] - m[0, 1]) * s]
+        elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2])
+            q[i] = [(m[2, 1] - m[1, 2]) / s, 0.25 * s,
+                    (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s]
+        elif m[1, 1] > m[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2])
+            q[i] = [(m[0, 2] - m[2, 0]) / s, (m[0, 1] + m[1, 0]) / s,
+                    0.25 * s, (m[1, 2] + m[2, 1]) / s]
+        else:
+            s = 2.0 * np.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1])
+            q[i] = [(m[1, 0] - m[0, 1]) / s, (m[0, 2] + m[2, 0]) / s,
+                    (m[1, 2] + m[2, 1]) / s, 0.25 * s]
+    return q
+
+
+def _extract_ego_rot_from_egomotion(ego) -> np.ndarray | None:
+    """Extract rotation quaternions (N, 4) [w,x,y,z] from an egomotion object."""
+    try:
+        # Direct path: Interpolator → EgomotionState → pose → RigidTransform
+        if hasattr(ego, 'values') and hasattr(ego.values, 'pose'):
+            return _extract_rot_from_rigid_transform(ego.values.pose)
+
+        # Try calling the Interpolator and getting pose from result
+        if hasattr(ego, 'timestamps') and callable(ego):
+            states = ego(ego.timestamps)
+            if hasattr(states, 'pose'):
+                return _extract_rot_from_rigid_transform(states.pose)
+    except Exception as e:
+        print(f"  ego_history_rot extraction error: {e}")
     return None
 
 
