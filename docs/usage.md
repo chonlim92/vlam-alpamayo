@@ -71,7 +71,7 @@ The web GUI (powered by Gradio) has three tabs with a single-page output layout 
 
 1. **Select Model** from the dropdown (`alpamayo-1` or `alpamayo-1.5`)
 2. Click **Load Model** — wait for confirmation
-3. **Select Dataset** from the dropdown (14 datasets available)
+3. **Select Dataset** from the dropdown (8 datasets available)
 4. Set **Samples to Load** and click **Load Data**
 5. Adjust **Sample Index** and **Trajectory Samples** count
 6. Click **Run Reasoning** to generate output
@@ -104,7 +104,7 @@ The web GUI (powered by Gradio) has three tabs with a single-page output layout 
 
 ### 3. Reference Tab
 
-Displays model comparison table and the full list of 14 supported datasets.
+Displays model comparison table and the full list of supported datasets.
 
 ---
 

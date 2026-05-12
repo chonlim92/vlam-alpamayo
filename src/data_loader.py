@@ -25,18 +25,7 @@ DATASETS = {
         "size": "133 TB (full) — downloads individual clips via SDK",
         "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles",
     },
-    "physical-ai-av-nurec": {
-        "hf_id": "nvidia/PhysicalAI-Autonomous-Vehicles-NuRec",
-        "loader": "unsupported",
-        "description": (
-            "918 dynamic neural-reconstructed 3D driving scenes (USDZ format) derived "
-            "from the PhysicalAI-AV dataset. Used for closed-loop simulation and "
-            "evaluation with AlpaSim. ⚠️ USDZ format — not loadable in this app."
-        ),
-        "size": "1.77 TB",
-        "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec",
-    },
-    # ── Public driving datasets (used in Alpamayo 1.5 training) ───────────
+    # ── Public driving datasets (images + VQA, loadable) ──────────────────
     "coda-lm": {
         "hf_id": "KaiChen1998/coda-lm-llava-format",
         "hf_config": "English",
@@ -67,6 +56,7 @@ DATASETS = {
     },
     "nuscenesqa": {
         "hf_id": "KevinNotSmile/nuscenes-qa-mini",
+        "hf_config": "day",
         "loader": "hf_streaming",
         "description": "VQA on nuScenes with 6 camera views + LiDAR BEV.",
         "size": "~500 MB",
@@ -82,16 +72,6 @@ DATASETS = {
         "size": "~2 GB",
         "url": "https://huggingface.co/datasets/OpenDriveLab/DriveGPT4",
         "image_keys": ["png"],
-        "qa_mode": "metadata_only",
-    },
-    # ── Datasets with image paths (not embedded) — stream metadata only ──
-    "drivelm": {
-        "hf_id": "OpenDriveLab/DriveLM",
-        "loader": "hf_streaming",
-        "description": "Driving language-model QA pairs with nuScenes multi-view images.",
-        "size": "~2 GB (gated — requires access approval)",
-        "url": "https://huggingface.co/datasets/OpenDriveLab/DriveLM",
-        "image_keys": [],
         "qa_mode": "metadata_only",
     },
     "omnidrive": {
@@ -111,67 +91,6 @@ DATASETS = {
         "url": "https://huggingface.co/datasets/nuInstruct/nuInstruct",
         "image_keys": [],
         "qa_mode": "question_answer",
-    },
-    # ── Non-standard / special format datasets ───────────────────────────
-    "navsim": {
-        "hf_id": "autonomousvision/navsim",
-        "loader": "unsupported",
-        "description": (
-            "Navigation simulation benchmark — custom OpenScene format. "
-            "⚠️ Not loadable via standard HF streaming."
-        ),
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/autonomousvision/navsim",
-    },
-    "talk2car": {
-        "hf_id": "talk2car/Talk2Car",
-        "loader": "unsupported",
-        "description": (
-            "Natural language grounding in driving scenes — JSON + nuScenes images. "
-            "⚠️ Requires nuScenes image download separately."
-        ),
-        "size": "~500 MB",
-        "url": "https://huggingface.co/datasets/talk2car/Talk2Car",
-    },
-    "maplm": {
-        "hf_id": "LLVM-AD/maplm_v2",
-        "loader": "unsupported",
-        "description": (
-            "Map-centric driving VQA — custom loader script, not viewer-compatible. "
-            "⚠️ Requires custom loading."
-        ),
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/MapLM/MapLM",
-    },
-    "mm-au": {
-        "hf_id": "Yiming-Li/MM-AU",
-        "loader": "unsupported",
-        "description": (
-            "Multi-modal action understanding — raw zip files only. "
-            "⚠️ No structured schema available."
-        ),
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/Yiming-Li/MM-AU",
-    },
-    "senna": {
-        "hf_id": "hustvl/Senna",
-        "loader": "unsupported",
-        "description": (
-            "Senna is a model/system, not a downloadable dataset. "
-            "⚠️ Generates VQA data from nuScenes using LLaVA."
-        ),
-        "size": "N/A",
-        "url": "https://huggingface.co/hustvl/Senna",
-    },
-    "roadwork": {
-        "hf_id": "anuragxel/roadwork-dataset",
-        "loader": "unsupported",
-        "description": (
-            "Construction zone data — raw zip files (images, video, segmentation). "
-            "⚠️ No structured schema on HF."
-        ),
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/anuragxel/roadwork-dataset",
     },
 }
 

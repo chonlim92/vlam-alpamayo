@@ -15,7 +15,7 @@ For a detailed comparison, see [docs/models.md](docs/models.md).
 
 ## Dataset
 
-This project supports **14 driving datasets** streamed on-demand from Hugging Face (no full download required), including NVIDIA's [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (1,700 hours, 306K clips, 25 countries), plus DriveLM, LingoQA, nuScenesQA, NAVSIM, Omnidrive, Talk2Car, CODA-LM, DriveGPT4, and more. See [docs/datasets.md](docs/datasets.md) for the full list.
+This project supports **8 driving datasets** streamed on-demand from Hugging Face (no full download required), including NVIDIA's [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (1,700 hours, 306K clips, 25 countries), plus LingoQA, nuScenesQA, CODA-LM, DriveGPT4, OmniDrive, and more. See [docs/datasets.md](docs/datasets.md) for the full list.
 
 ---
 
@@ -347,7 +347,7 @@ The model weights are ~22 GB. On a 100 MB/s connection, expect ~2.5 minutes. Wei
 | **Python 3.12** | Core language for the application |
 | **PyTorch ≥ 2.8** | Deep learning framework for model inference and tensor operations |
 | **Hugging Face Transformers** | Model loading, tokenization, and inference pipeline for 10B-parameter VLA models |
-| **Hugging Face Hub / Datasets** | Streaming access to gated model weights and 14 driving datasets without full download |
+| **Hugging Face Hub / Datasets** | Streaming access to gated model weights and 8 driving datasets without full download |
 | **NVIDIA Alpamayo (VLA)** | Vision-Language-Action models combining perception, Chain-of-Causation reasoning, and diffusion-based trajectory prediction |
 | **DeepSpeed** | Distributed inference optimization for large-scale model loading |
 | **Flash Attention 2 / SDPA** | Memory-efficient attention implementations for running 10B models on consumer GPUs (24 GB+) |

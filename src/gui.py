@@ -652,7 +652,7 @@ def build_gui() -> gr.Blocks:
                 <span class="header-badge header-badge-green">● Online</span>
                 <span class="header-badge">Alpamayo 1 &amp; 1.5</span>
                 <span class="header-badge">10.5B Parameters</span>
-                <span class="header-badge">14 Datasets</span>
+                <span class="header-badge">8 Datasets</span>
                 <span class="header-badge">Chain-of-Causation</span>
                 <span class="header-badge">BEV Trajectory</span>
             </div>
@@ -860,7 +860,7 @@ def build_gui() -> gr.Blocks:
                 gr.HTML('<p class="section-title">Model Comparison</p>')
                 gr.Markdown(_build_model_info_table())
 
-                gr.HTML('<p class="section-title" style="margin-top:28px">Supported Datasets (14)</p>')
+                gr.HTML('<p class="section-title" style="margin-top:28px">Supported Datasets (8)</p>')
                 gr.Markdown(_build_dataset_table())
 
         # ── Footer ───────────────────────────────────────────────────
