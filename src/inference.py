@@ -65,65 +65,67 @@ class InferenceEngine:
         """Check if the sample is a parquet metadata row (no camera data)."""
         if not isinstance(sample, dict):
             return False
-        # Parquet rows from ood_reasoning.parquet have clip_uuid / event_cluster
-        parquet_keys = {"clip_uuid", "event_cluster", "coc", "reasoning"}
-        has_parquet_fields = bool(parquet_keys & set(k.lower() for k in sample.keys()))
+        keys = set(sample.keys())
+        # ood_reasoning.parquet has: feature, event_cluster, events, split
+        parquet_keys = {"event_cluster", "events", "feature", "split"}
+        has_parquet_fields = len(parquet_keys & keys) >= 2
         # Model-ready samples would have camera/image data
         camera_keys = {"camera_front_wide_120fov", "images", "image", "video", "frames"}
-        has_camera = bool(camera_keys & set(k.lower() for k in sample.keys()))
+        has_camera = bool(camera_keys & {k.lower() for k in keys})
         return has_parquet_fields and not has_camera
 
     def _format_parquet_result(self, sample: dict) -> dict:
-        """Format a pre-annotated parquet row as an inference result."""
-        keys = list(sample.keys())
-        print(f"[DEBUG] Parquet sample keys: {keys}")
-        for k in keys:
-            v = sample[k]
-            preview = str(v)[:200] if v is not None else "None"
-            print(f"  {k}: {preview}")
+        """Format a pre-annotated parquet row as an inference result.
 
-        # Find the reasoning text — try all plausible column names
-        reasoning = ""
-        for key in sample:
-            kl = key.lower()
-            if any(t in kl for t in ("coc", "reasoning", "chain", "annotation", "description", "text", "label")):
-                val = sample[key]
-                if val is not None and str(val).strip():
-                    reasoning = str(val)
-                    break
+        The ood_reasoning.parquet has columns:
+          feature, event_cluster, events, split
+        where `events` is a list of dicts: [{event_start_frame, event_start_timestamp, coc}, ...]
+        """
+        # Extract CoC reasoning from the nested events list
+        events = sample.get("events", [])
+        reasoning_parts = []
+        if isinstance(events, (list, tuple)):
+            for i, evt in enumerate(events, 1):
+                if isinstance(evt, dict):
+                    coc = evt.get("coc", "")
+                    frame = evt.get("event_start_frame", "?")
+                    ts = evt.get("event_start_timestamp", "?")
+                    reasoning_parts.append(
+                        f"Event {i}  (frame {frame}, timestamp {ts})\n{coc}"
+                    )
+                elif isinstance(evt, str):
+                    reasoning_parts.append(f"Event {i}\n{evt}")
+        elif isinstance(events, str):
+            # May be JSON string
+            try:
+                import json
+                parsed = json.loads(events)
+                if isinstance(parsed, list):
+                    for i, evt in enumerate(parsed, 1):
+                        coc = evt.get("coc", "") if isinstance(evt, dict) else str(evt)
+                        frame = evt.get("event_start_frame", "?") if isinstance(evt, dict) else "?"
+                        reasoning_parts.append(
+                            f"Event {i}  (frame {frame})\n{coc}"
+                        )
+            except (json.JSONDecodeError, TypeError):
+                reasoning_parts.append(events)
 
-        # Find clip identifier
-        clip_id = "unknown"
-        for key in sample:
-            kl = key.lower()
-            if any(t in kl for t in ("clip_uuid", "clip_id", "uuid", "clip", "id", "name")):
-                clip_id = str(sample[key])
-                break
+        reasoning_text = "\n\n".join(reasoning_parts) if reasoning_parts else "(no events in this row)"
 
-        lines = [f"Clip ID:         {clip_id}"]
+        feature = sample.get("feature", "unknown")
+        cluster = sample.get("event_cluster", "unknown")
+        split = sample.get("split", "unknown")
 
-        # Include all other metadata fields
-        skip_keys = set()
-        for key in sample:
-            kl = key.lower()
-            if any(t in kl for t in ("clip_uuid", "clip_id", "uuid", "clip", "id", "name",
-                                      "coc", "reasoning", "chain", "annotation", "description", "text", "label")):
-                skip_keys.add(key)
-
-        for key in sample:
-            if key not in skip_keys:
-                val = sample[key]
-                if val is not None:
-                    val_str = str(val)
-                    if len(val_str) <= 200:
-                        lines.append(f"{key}:  {val_str}")
-
-        lines.extend([
+        lines = [
+            f"Feature:         {feature}",
+            f"Event Cluster:   {cluster}",
+            f"Split:           {split}",
+            f"Events:          {len(events) if isinstance(events, (list, tuple)) else '?'}",
             "",
             "━━━  Chain-of-Causation (pre-annotated)  ━━━━━━━━━━━━━━━━",
             "",
-            reasoning if reasoning else "(no reasoning text found in this row)",
-        ])
+            reasoning_text,
+        ]
 
         return {
             "model": f"{MODEL_INFO[self.model_key]['name']} (pre-annotated data)",
