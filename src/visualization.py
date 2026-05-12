@@ -516,16 +516,19 @@ def _draw_compact_text(canvas: np.ndarray, lines: list[str], model_name: str) ->
 def _draw_streaming_log(
     canvas: np.ndarray, lines: list[str], model_name: str, time_s: float,
 ) -> None:
-    """Draw CoC reasoning as a streaming log with timestamp at the bottom."""
+    """Draw CoC reasoning as a streaming log with timestamp above the timeline."""
     h, w = canvas.shape[:2]
     font_scale = max(0.4, min(0.55, w / 1800))
     line_h = int(22 * font_scale / 0.4)
+    timeline_h = 6
+    padding = 6  # gap between panel and timeline
     panel_h = (len(lines) + 1) * line_h + 10
-    y_start = h - panel_h - 8  # above the timeline bar
+    panel_bottom = h - timeline_h - padding
+    y_start = panel_bottom - panel_h
 
     # Semi-transparent panel
     overlay = canvas.copy()
-    cv2.rectangle(overlay, (0, y_start), (w, h - 6), _TEXT_BG, -1)
+    cv2.rectangle(overlay, (0, y_start), (w, panel_bottom), _TEXT_BG, -1)
     cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
 
     # Header: model name + timestamp

@@ -352,17 +352,44 @@ class InferenceEngine:
                 frames=data["image_frames"].flatten(0, 1),
                 camera_indices=data["camera_indices"],
             )
+            messages.append({"role": "user", "content": question})
         else:
             # Fallback: try to build messages from images in the sample
             images = data_sample.get("images", [])
             if not images and "camera_front_wide_120fov" in data_sample:
                 images = data_sample["camera_front_wide_120fov"]
-            messages = helper.create_message(
-                frames=images,
-            )
 
-        # Append the user question to the conversation
-        messages.append({"role": "user", "content": question})
+            if not images:
+                # No images — build a text-only VQA
+                messages = [{"role": "user", "content": question}]
+            else:
+                # Convert PIL images / numpy arrays to torch tensors for the SDK helper
+                import torch
+                from torchvision.transforms.functional import to_tensor
+                from PIL import Image as _PILImage
+
+                tensor_frames = []
+                for img in images:
+                    if isinstance(img, np.ndarray):
+                        # HWC uint8 numpy → CHW float tensor
+                        t = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+                    elif isinstance(img, _PILImage.Image):
+                        t = to_tensor(img)
+                    elif isinstance(img, torch.Tensor):
+                        t = img
+                    else:
+                        continue
+                    tensor_frames.append(t)
+
+                if tensor_frames:
+                    frames_tensor = torch.stack(tensor_frames)
+                    messages = helper.create_message(
+                        frames=frames_tensor,
+                    )
+                    # Append the user question to the conversation
+                    messages.append({"role": "user", "content": question})
+                else:
+                    messages = [{"role": "user", "content": question}]
 
         # Tokenize
         processor = helper.get_processor(self.model.tokenizer)
