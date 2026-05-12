@@ -226,11 +226,15 @@ def run_reasoning_action(
 
         text_out = _format_reasoning_result(result)
 
-        config = _get_config()
-        video_path = render_result_video(
-            _data_samples[idx], result, output_dir=config.output_dir,
-        )
-        traj_img = render_trajectory_plot(result.get("trajectory"))
+        # Skip video/trajectory rendering for pre-annotated parquet data
+        video_path = None
+        traj_img = None
+        if result.get("source") != "parquet_annotation":
+            config = _get_config()
+            video_path = render_result_video(
+                _data_samples[idx], result, output_dir=config.output_dir,
+            )
+            traj_img = render_trajectory_plot(result.get("trajectory"))
 
         return (text_out, video_path, traj_img)
     except Exception as e:
@@ -361,8 +365,8 @@ def build_gui() -> gr.Blocks:
             with gr.Tab("🧠  Reasoning", id="tab-reasoning"):
                 with gr.Row(equal_height=False):
 
-                    # ── Left: Setup Panel ─────────────────────────────
-                    with gr.Column(scale=1, min_width=340):
+                    # ── Left: Model & Dataset ─────────────────────────
+                    with gr.Column(scale=1, min_width=300):
 
                         gr.HTML('<p class="section-title">Model Configuration</p>')
                         model_select = gr.Dropdown(
@@ -409,7 +413,9 @@ def build_gui() -> gr.Blocks:
                             elem_classes="status-idle",
                         )
 
-                        gr.HTML('<p class="section-title" style="margin-top:24px">Inference</p>')
+                    # ── Middle: Inference Controls ────────────────────
+                    with gr.Column(scale=1, min_width=280):
+                        gr.HTML('<p class="section-title">Inference</p>')
                         sample_idx = gr.Slider(
                             minimum=0, maximum=9, value=0, step=1,
                             label="Sample Index",
@@ -429,7 +435,14 @@ def build_gui() -> gr.Blocks:
                             elem_classes="run-btn",
                         )
 
-                    # ── Right: Results Panel ──────────────────────────
+                        gr.HTML('<p class="section-title" style="margin-top:24px">Reasoning Trace</p>')
+                        result_output = gr.Textbox(
+                            label="Chain-of-Causation Output",
+                            interactive=False,
+                            lines=18,
+                        )
+
+                    # ── Right: Visual Output ──────────────────────────
                     with gr.Column(scale=2):
                         gr.HTML('<p class="section-title">Output</p>')
 
@@ -455,13 +468,6 @@ def build_gui() -> gr.Blocks:
                                 gr.HTML(
                                     '<p class="output-description">Predicted 6.4s future trajectory '
                                     '(64 waypoints @ 10 Hz) in ego-vehicle BEV coordinates.</p>'
-                                )
-
-                            with gr.Tab("📝  Reasoning Trace", id="out-text"):
-                                result_output = gr.Textbox(
-                                    label="Chain-of-Causation Output",
-                                    interactive=False,
-                                    lines=26,
                                 )
 
                 # Wire events

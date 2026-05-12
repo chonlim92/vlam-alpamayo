@@ -74,8 +74,15 @@ def load_model(config: AppConfig, model_key: str | None = None):
     dtype = DTYPE_MAP.get(config.dtype, torch.bfloat16)
     device = config.device
 
+    # Use device_map="auto" to spread model across multiple GPUs when needed
+    num_gpus = torch.cuda.device_count() if device == "cuda" else 0
+    use_device_map = num_gpus > 1
+    device_map = "auto" if use_device_map else None
+
     print(f"Loading {MODEL_INFO[model_key]['name']} from {model_id}...")
     print(f"  Device: {device}, Dtype: {config.dtype}, Attention: {config.attn_implementation}")
+    if use_device_map:
+        print(f"  Using device_map='auto' across {num_gpus} GPUs")
 
     if model_key == "alpamayo-1":
         from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
@@ -84,7 +91,10 @@ def load_model(config: AppConfig, model_key: str | None = None):
             model_id,
             dtype=dtype,
             attn_implementation=config.attn_implementation,
-        ).to(device)
+            device_map=device_map,
+        )
+        if not use_device_map:
+            model = model.to(device)
     else:
         from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
 
@@ -92,7 +102,10 @@ def load_model(config: AppConfig, model_key: str | None = None):
             model_id,
             dtype=dtype,
             attn_implementation=config.attn_implementation,
-        ).to(device)
+            device_map=device_map,
+        )
+        if not use_device_map:
+            model = model.to(device)
 
     print(f"Model loaded successfully.")
     return model

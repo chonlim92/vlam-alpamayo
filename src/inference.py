@@ -26,28 +26,30 @@ class InferenceEngine:
     def run_reasoning(self, data_sample) -> dict:
         """Run Chain-of-Causation reasoning on a data sample.
 
+        If the sample already contains pre-annotated reasoning (e.g. from the
+        ood_reasoning parquet), return that directly.  Otherwise, run the model.
+
         Args:
-            data_sample: A sample from the PhysicalAI-AV dataset containing
-                         multi-camera images, egomotion history, and timestamps.
+            data_sample: A data sample — either a model-ready dict with camera
+                         images, or a parquet row with pre-annotated reasoning.
 
         Returns:
             Dictionary with reasoning traces and trajectory predictions.
         """
+        # ── Check if this is a pre-annotated parquet row ─────────────
+        if self._is_parquet_row(data_sample):
+            return self._format_parquet_result(data_sample)
+
+        # ── Full model inference ─────────────────────────────────────
         if self.model is None:
             raise RuntimeError("Model not loaded. Call .load() first.")
 
         print("Running Chain-of-Causation reasoning...")
 
-        if self.model_key == "alpamayo-1":
-            result = self.model.sample_trajectories_from_data_with_vlm_rollout(
-                data_sample,
-                num_traj_samples=self.config.num_traj_samples,
-            )
-        else:
-            result = self.model.sample_trajectories_from_data_with_vlm_rollout(
-                data_sample,
-                num_traj_samples=self.config.num_traj_samples,
-            )
+        result = self.model.sample_trajectories_from_data_with_vlm_rollout(
+            data_sample,
+            num_traj_samples=self.config.num_traj_samples,
+        )
 
         output = {
             "model": MODEL_INFO[self.model_key]["name"],
@@ -57,6 +59,48 @@ class InferenceEngine:
         }
 
         return output
+
+    @staticmethod
+    def _is_parquet_row(sample) -> bool:
+        """Check if the sample is a parquet metadata row (no camera data)."""
+        if not isinstance(sample, dict):
+            return False
+        # Parquet rows from ood_reasoning.parquet have clip_uuid / event_cluster
+        parquet_keys = {"clip_uuid", "event_cluster", "coc", "reasoning"}
+        has_parquet_fields = bool(parquet_keys & set(k.lower() for k in sample.keys()))
+        # Model-ready samples would have camera/image data
+        camera_keys = {"camera_front_wide_120fov", "images", "image", "video", "frames"}
+        has_camera = bool(camera_keys & set(k.lower() for k in sample.keys()))
+        return has_parquet_fields and not has_camera
+
+    def _format_parquet_result(self, sample: dict) -> dict:
+        """Format a pre-annotated parquet row as an inference result."""
+        # Find the reasoning text — column names may vary
+        reasoning = ""
+        for key in sample:
+            kl = key.lower()
+            if "coc" in kl or "reasoning" in kl or "chain" in kl:
+                reasoning = str(sample[key])
+                break
+
+        clip_id = sample.get("clip_uuid", sample.get("clip_id", "unknown"))
+
+        lines = [
+            f"Clip UUID:       {clip_id}",
+        ]
+        if "event_cluster" in sample:
+            lines.append(f"Event Cluster:   {sample['event_cluster']}")
+        if "keyframes" in sample:
+            lines.append(f"Keyframes:       {sample['keyframes']}")
+        lines.extend(["", "━━━  Chain-of-Causation (pre-annotated)  ━━━━━━━━━━━━━━━━", "", reasoning])
+
+        return {
+            "model": f"{MODEL_INFO[self.model_key]['name']} (pre-annotated data)",
+            "reasoning_trace": "\n".join(lines),
+            "trajectory": None,
+            "timestamp": datetime.now().isoformat(),
+            "source": "parquet_annotation",
+        }
 
     def run_vqa(self, data_sample, question: str) -> dict:
         """Run Visual Question Answering (Alpamayo 1.5 only).
