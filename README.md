@@ -226,13 +226,38 @@ The Gradio web interface provides a single-page layout with:
 ### Output Panel
 
 - **Annotated Video** — Multi-camera composite with:
-  - Predicted trajectory (green) and ground-truth trajectory (orange) overlaid on camera view
   - BEV mini-map (top-right) with Pred/GT legend
-  - Per-frame trajectory info + ADE/FDE metrics (top-left)
-  - Compact CoC reasoning text (bottom, 2-line scrolling bar)
+  - CoC reasoning log (top-left, streaming with timestamps)
+  - Per-frame trajectory info + streaming ADE/FDE (bottom-right)
+  - **Speed & steering angle** (bottom-right, yellow — *derived from trajectory*)
   - Timeline progress bar
 - **Trajectory (BEV)** — Zoomable, full-screen capable Bird's-Eye-View plot showing predicted vs GT trajectories with ADE/FDE text
-- **Metrics** — minADE and minFDE values displayed alongside the trajectory plot
+- **Metrics** — minADE, minFDE, plus derived speed and steering statistics
+
+### Screenshots
+
+**Reasoning Tab:**
+
+![VLAM-Alpamayo GUI — Reasoning](docs/images/VLAM_GUI.jpg)
+
+**Visual QA Tab:**
+
+![VLAM-Alpamayo GUI — Visual QA](docs/images/VQA_GUI.jpg)
+
+**Sample Output Video:**
+
+See [docs/images/sample_output.mp4](docs/images/sample_output.mp4) for a full annotated video with trajectory overlay, CoC reasoning, and streaming metrics.
+
+### Derived Metrics: Speed & Steering Angle
+
+The model predicts future trajectory waypoints (64 points at 10 Hz over 6.4 s). Speed and steering angle are **not direct model outputs** — they are **computed from the predicted trajectory**:
+
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| **Speed** | $v = \\|\\Delta p\\| / \\Delta t$ | Displacement between consecutive waypoints divided by timestep (0.1 s) |
+| **Steering** | $\\delta = \\theta_t - \\theta_{t-1}$ | Change in heading angle ($\\text{atan2}(\\Delta y, \\Delta x)$) between consecutive steps |
+
+On the video overlay, these appear in **yellow** with an asterisk (`*`) and a footnote "derived from trajectory" to clearly distinguish them from direct model predictions.
 
 ### Key Parameters
 

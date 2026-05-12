@@ -323,8 +323,10 @@ class InferenceEngine:
     def run_vqa(self, data_sample, question: str) -> dict:
         """Run Visual Question Answering (Alpamayo 1.5 only).
 
-        Uses the SDK helper to build a chat message with the question,
-        then generates text via the model's standard inference pipeline.
+        The model is fine-tuned for structured CoC output only, so we work
+        within that format: keep the standard prompt, append the user's
+        question, run generate_text(), and return the extracted text fields
+        (cot reasoning + meta_action + answer) as the VQA answer.
 
         Args:
             data_sample: A data sample with driving scene images.
@@ -342,130 +344,108 @@ class InferenceEngine:
 
         from alpamayo1_5 import helper
 
-        # Build chat messages from frames, then append question
+        # Build standard SDK messages (system + user(images+traj_prompt) + assistant(cot_start))
         clip_id = data_sample.get("clip_id")
         if clip_id and data_sample.get("source") == "physical_ai_av_sdk":
-            # SDK sample — use load_physical_aiavdataset for model-ready data
             from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
             data = load_physical_aiavdataset(clip_id)
             messages = helper.create_message(
                 frames=data["image_frames"].flatten(0, 1),
                 camera_indices=data["camera_indices"],
             )
-            messages.append({"role": "user", "content": question})
         else:
-            # Fallback: try to build messages from images in the sample
             images = data_sample.get("images", [])
             if not images and "camera_front_wide_120fov" in data_sample:
                 images = data_sample["camera_front_wide_120fov"]
 
             if not images:
-                # No images — build a text-only VQA
-                messages = [{"role": "user", "content": question}]
-            else:
-                # Convert PIL images / numpy arrays to torch tensors for the SDK helper
-                import torch
-                from torchvision.transforms.functional import to_tensor
-                from PIL import Image as _PILImage
+                return {
+                    "model": MODEL_INFO[self.model_key]["name"],
+                    "question": question,
+                    "answer": "No images available for VQA.",
+                    "timestamp": datetime.now().isoformat(),
+                }
 
-                tensor_frames = []
-                for img in images:
-                    if isinstance(img, np.ndarray):
-                        # HWC uint8 numpy → CHW float tensor
-                        t = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
-                    elif isinstance(img, _PILImage.Image):
-                        t = to_tensor(img)
-                    elif isinstance(img, torch.Tensor):
-                        t = img
-                    else:
-                        continue
-                    tensor_frames.append(t)
+            import torch as _torch
+            from torchvision.transforms.functional import to_tensor
+            from PIL import Image as _PILImage
 
-                if tensor_frames:
-                    frames_tensor = torch.stack(tensor_frames)
-                    messages = helper.create_message(
-                        frames=frames_tensor,
-                    )
-                    # Append the user question to the conversation
-                    messages.append({"role": "user", "content": question})
+            tensor_frames = []
+            for img in images:
+                if isinstance(img, np.ndarray):
+                    t = _torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+                elif isinstance(img, _PILImage.Image):
+                    t = to_tensor(img)
+                elif isinstance(img, _torch.Tensor):
+                    t = img
                 else:
-                    messages = [{"role": "user", "content": question}]
+                    continue
+                tensor_frames.append(t)
 
-        # Debug: log message structure to diagnose any issues
-        print(f"  VQA messages: {len(messages)} entries")
-        for i, msg in enumerate(messages):
-            if isinstance(msg, dict):
-                content = msg.get("content", "")
-                content_desc = f"str({len(content)})" if isinstance(content, str) else f"{type(content).__name__}"
-                if isinstance(content, list):
-                    content_desc = f"list({len(content)}): [{', '.join(type(c).__name__ for c in content[:3])}...]"
-                print(f"    [{i}] role={msg.get('role')}, content={content_desc}")
-            else:
-                print(f"    [{i}] type={type(msg).__name__}, value={str(msg)[:80]}")
+            if not tensor_frames:
+                return {
+                    "model": MODEL_INFO[self.model_key]["name"],
+                    "question": question,
+                    "answer": "No valid images for VQA.",
+                    "timestamp": datetime.now().isoformat(),
+                }
 
-        # Sanitize: ensure all messages are dicts with role/content
-        clean_messages = []
+            frames_tensor = _torch.stack(tensor_frames)
+            messages = helper.create_message(frames=frames_tensor)
+
+        # Inject the user's question into the existing user message text
+        # (append it after the trajectory history / CoC prompt).
         for msg in messages:
-            if isinstance(msg, str):
-                # Wrap bare strings as user messages
-                clean_messages.append({"role": "user", "content": msg})
-            elif isinstance(msg, dict):
-                clean_messages.append(msg)
-            else:
-                print(f"  WARNING: skipping unexpected message type: {type(msg)}")
-        messages = clean_messages
+            if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                for i in range(len(msg["content"]) - 1, -1, -1):
+                    part = msg["content"][i]
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        original = part["text"]
+                        part["text"] = original + f"\n\nAdditionally, answer this question: {question}"
+                        break
+                break
 
-        # Tokenize
+        # Tokenize using the SDK processor
         processor = helper.get_processor(self.model.tokenizer)
-        try:
-            inputs = processor.apply_chat_template(
-                messages,
-                tokenize=True,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt",
-            )
-        except TypeError as e:
-            # Likely the processor can't handle multimodal content blocks
-            # Fall back to text-only: extract text from content blocks
-            print(f"  apply_chat_template failed: {e}")
-            print(f"  Falling back to text-only chat template...")
-            text_messages = []
-            for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    # Extract text parts from multimodal content blocks
-                    text_parts = []
-                    for part in content:
-                        if isinstance(part, dict) and part.get("type") == "text":
-                            text_parts.append(part.get("text", ""))
-                        elif isinstance(part, str):
-                            text_parts.append(part)
-                    content = " ".join(text_parts) if text_parts else ""
-                text_messages.append({"role": msg.get("role", "user"), "content": content})
-            inputs = processor.apply_chat_template(
-                text_messages,
-                tokenize=True,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt",
-            )
+        inputs = processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=False,   # keep the assistant cot_start prefix
+            return_dict=True,
+            return_tensors="pt",
+        )
 
-        # Generate text
+        # Run generation via the SDK's generate_text pipeline
         import torch
-        inputs = helper.to_device(inputs, "cuda")
+        model_input = {"tokenized_data": inputs}
+        model_input = helper.to_device(model_input, "cuda")
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=512,
-                do_sample=False,
+            extra = self.model.generate_text(
+                data=model_input,
+                max_generation_length=512,
+                temperature=0.6,
+                num_samples=1,
             )
 
-        # Decode — skip input tokens
-        input_len = inputs["input_ids"].shape[1]
-        answer = self.model.tokenizer.decode(
-            output_ids[0][input_len:], skip_special_tokens=True,
-        ).strip()
+        # extract_text_tokens returns {"cot": array, "meta_action": array, "answer": array}
+        cot = str(extra.get("cot", np.array([[""]]))[0, 0]).strip()
+        meta_action = str(extra.get("meta_action", np.array([[""]]))[0, 0]).strip()
+        answer_field = str(extra.get("answer", np.array([[""]]))[0, 0]).strip()
+
+        print(f"  cot: {cot!r}")
+        print(f"  meta_action: {meta_action!r}")
+        print(f"  answer: {answer_field!r}")
+
+        # Compose VQA answer from structured fields
+        parts = []
+        if cot:
+            parts.append(f"**Reasoning:** {cot}")
+        if meta_action:
+            parts.append(f"**Action:** {meta_action}")
+        if answer_field:
+            parts.append(f"**Answer:** {answer_field}")
+
+        answer = "\n\n".join(parts) if parts else "The model could not generate an answer for this scene."
 
         return {
             "model": MODEL_INFO[self.model_key]["name"],

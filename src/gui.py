@@ -461,6 +461,44 @@ def run_reasoning_action(
                 lines.append(f"| **minFDE** | {min_fde:.4f} m |")
             lines.append(f"\n- Horizon: {traj.get('horizon_seconds', 6.4):.1f}s")
             lines.append(f"- Waypoints: {traj.get('num_waypoints', '?')} @ {traj.get('frequency_hz', 10)} Hz")
+
+            # Derived speed & steering from trajectory waypoints
+            wps = traj.get("waypoints")
+            if wps and len(wps) >= 2:
+                import numpy as _np
+                wps_arr = _np.array(wps)
+                freq = traj.get("frequency_hz", 10)
+                dt = 1.0 / freq
+                diffs = _np.diff(wps_arr[:, :2], axis=0)
+                dists = _np.linalg.norm(diffs, axis=1)
+                speeds = dists / dt  # m/s
+                avg_speed_kmh = float(_np.mean(speeds)) * 3.6
+                max_speed_kmh = float(_np.max(speeds)) * 3.6
+                # Heading changes → steering
+                headings = _np.arctan2(diffs[:, 1], diffs[:, 0])
+                if len(headings) >= 2:
+                    steer_changes = _np.diff(headings)
+                    # Normalize to [-pi, pi]
+                    steer_changes = (steer_changes + _np.pi) % (2 * _np.pi) - _np.pi
+                    steer_deg = _np.degrees(steer_changes)
+                    avg_steer = float(_np.mean(_np.abs(steer_deg)))
+                    max_steer = float(_np.max(_np.abs(steer_deg)))
+                else:
+                    avg_steer = 0.0
+                    max_steer = 0.0
+
+                lines.append("")
+                lines.append("### Derived from Trajectory*\n")
+                lines.append("| Metric | Value |")
+                lines.append("|--------|-------|")
+                lines.append(f"| **Avg Speed** | {avg_speed_kmh:.1f} km/h |")
+                lines.append(f"| **Max Speed** | {max_speed_kmh:.1f} km/h |")
+                lines.append(f"| **Avg |Steering|** | {avg_steer:.1f} deg/step |")
+                lines.append(f"| **Max |Steering|** | {max_steer:.1f} deg/step |")
+                lines.append(f"\n*\\*Speed and steering angle are computed from "
+                             f"consecutive waypoint displacements and heading "
+                             f"changes, not direct model outputs.*")
+
             metrics_md = "\n".join(lines)
 
     return (text_out, video_path, traj_img, min_ade, min_fde, metrics_md)

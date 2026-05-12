@@ -557,27 +557,64 @@ def _draw_frame_trajectory_info(
     frame_idx: int,
     total_frames: int,
     gt_waypoints: np.ndarray | None = None,
+    traj_freq_hz: float = 10.0,
 ) -> None:
-    """Draw per-frame trajectory info at bottom-right with streaming ADE/FDE."""
+    """Draw per-frame trajectory info at bottom-right with streaming ADE/FDE.
+
+    Speed and steering angle are **derived from trajectory waypoints** —
+    they are not direct model outputs.  Speed = displacement / dt between
+    consecutive waypoints.  Steering ≈ heading change between steps.
+    """
     h, w = canvas.shape[:2]
     if wps.ndim != 2 or wps.shape[0] < 2:
         return
+
+    dt = 1.0 / traj_freq_hz  # seconds per waypoint step
 
     # Map frame index to trajectory index
     traj_idx = min(int(frame_idx / max(total_frames, 1) * len(wps)), len(wps) - 1)
     x, y = wps[traj_idx, 0], wps[traj_idx, 1]
 
-    # Compute instantaneous speed (distance between consecutive points)
+    # Compute heading + speed from consecutive waypoints
     if traj_idx > 0:
         dx = wps[traj_idx, 0] - wps[traj_idx - 1, 0]
         dy = wps[traj_idx, 1] - wps[traj_idx - 1, 1]
-        dist = np.sqrt(dx**2 + dy**2)
-        total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
+        step_dist = np.sqrt(dx**2 + dy**2)
         heading_deg = np.degrees(np.arctan2(dy, dx))
+        speed_ms = step_dist / dt  # m/s
+        speed_kmh = speed_ms * 3.6  # km/h
     else:
-        dist = 0.0
-        total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
-        heading_deg = 0.0
+        dx = wps[1, 0] - wps[0, 0]
+        dy = wps[1, 1] - wps[0, 1]
+        step_dist = np.sqrt(dx**2 + dy**2)
+        heading_deg = np.degrees(np.arctan2(dy, dx))
+        speed_ms = step_dist / dt
+        speed_kmh = speed_ms * 3.6
+
+    total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
+
+    # Compute steering angle (heading change between consecutive steps)
+    steering_deg = 0.0
+    if traj_idx >= 2:
+        prev_dx = wps[traj_idx - 1, 0] - wps[traj_idx - 2, 0]
+        prev_dy = wps[traj_idx - 1, 1] - wps[traj_idx - 2, 1]
+        prev_heading = np.degrees(np.arctan2(prev_dy, prev_dx))
+        curr_heading = heading_deg
+        steering_deg = curr_heading - prev_heading
+        # Normalize to [-180, 180]
+        if steering_deg > 180:
+            steering_deg -= 360
+        elif steering_deg < -180:
+            steering_deg += 360
+    elif traj_idx == 1 and len(wps) > 2:
+        next_dx = wps[2, 0] - wps[1, 0]
+        next_dy = wps[2, 1] - wps[1, 1]
+        next_heading = np.degrees(np.arctan2(next_dy, next_dx))
+        steering_deg = next_heading - heading_deg
+        if steering_deg > 180:
+            steering_deg -= 360
+        elif steering_deg < -180:
+            steering_deg += 360
 
     # Compute progressive ADE/FDE up to current trajectory point
     ade_val, fde_val = None, None
@@ -591,7 +628,11 @@ def _draw_frame_trajectory_info(
             fde_val = float(errors[-1])
 
     has_metrics = ade_val is not None
-    box_w, box_h = 280, 112 if has_metrics else 90
+    # Box size: 5 base lines + 1 speed/steering + optional ADE/FDE
+    n_lines = 6 if not has_metrics else 7
+    line_h = 20
+    box_w = 310
+    box_h = n_lines * line_h + 12
     margin = 15
     timeline_h = 12  # stay above timeline bar
     box_x = w - margin - box_w
@@ -603,25 +644,35 @@ def _draw_frame_trajectory_info(
     cv2.rectangle(canvas, (box_x, box_y), (box_x + box_w, box_y + box_h), (80, 80, 80), 1)
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    fs = 0.45
+    fs = 0.42
     c = (200, 200, 200)
     g = (118, 185, 0)
+    yellow = (0, 220, 255)  # derived metrics color
     tx = box_x + 8
-    y_pos = box_y + 20
+    y_pos = box_y + 18
 
     cv2.putText(canvas, f"Frame {frame_idx+1}/{total_frames}", (tx, y_pos), font, fs, g, 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"Traj pt {traj_idx+1}/{len(wps)}", (tx + 142, y_pos), font, fs, c, 1, cv2.LINE_AA)
-    y_pos += 22
+    cv2.putText(canvas, f"Traj pt {traj_idx+1}/{len(wps)}", (tx + 155, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    y_pos += line_h
     cv2.putText(canvas, f"Pos: ({x:.1f}, {y:.1f}) m", (tx, y_pos), font, fs, c, 1, cv2.LINE_AA)
-    y_pos += 22
+    y_pos += line_h
     cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (tx, y_pos), font, fs, c, 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (tx + 142, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (tx + 155, y_pos), font, fs, c, 1, cv2.LINE_AA)
+
+    # Speed & steering — derived from trajectory (yellow to distinguish)
+    y_pos += line_h
+    cv2.putText(canvas, f"Speed*: {speed_kmh:.1f} km/h", (tx, y_pos), font, fs, yellow, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Steer*: {steering_deg:+.1f} deg", (tx + 155, y_pos), font, fs, yellow, 1, cv2.LINE_AA)
+
+    # Footnote: derived indicator
+    y_pos += line_h
+    cv2.putText(canvas, "* derived from trajectory", (tx, y_pos), font, 0.32, (140, 140, 140), 1, cv2.LINE_AA)
 
     # Streaming ADE/FDE — values evolve as trajectory progresses
     if has_metrics:
-        y_pos += 22
+        y_pos += line_h
         cv2.putText(canvas, f"ADE: {ade_val:.3f}m", (tx, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
-        cv2.putText(canvas, f"FDE: {fde_val:.3f}m", (tx + 142, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"FDE: {fde_val:.3f}m", (tx + 155, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:

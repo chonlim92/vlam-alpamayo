@@ -79,13 +79,42 @@ The web GUI (powered by Gradio) has three tabs with a single-page output layout 
 **Output (single-page, no tabs):**
 
 - **Annotated Video** — Multi-camera composite with:
-  - Predicted trajectory (green) and ground-truth trajectory (orange) on camera view
   - BEV mini-map (top-right) with Pred/GT legend
-  - Per-frame trajectory info + ADE/FDE metrics (top-left, cyan text)
-  - Compact CoC reasoning text (bottom, 2-line scrolling bar)
+  - CoC reasoning log (top-left, streaming with timestamps)
+  - Per-frame trajectory info + streaming ADE/FDE (bottom-right)
+  - **Speed & steering angle** (bottom-right, yellow — *derived from trajectory*)
   - Timeline progress bar
 - **Trajectory (BEV)** — Zoomable, full-screen capable Bird's-Eye-View plot showing predicted vs GT trajectories with ADE/FDE. Supports pinch-zoom and fullscreen button.
-- **Metrics** — minADE and minFDE values displayed side-by-side with the trajectory plot, plus a summary markdown table.
+- **Metrics** — minADE, minFDE, plus derived speed and steering statistics with a summary markdown table.
+
+### Screenshots
+
+**Reasoning Tab:**
+
+![VLAM-Alpamayo GUI — Reasoning](images/VLAM_GUI.jpg)
+
+**Visual QA Tab:**
+
+![VLAM-Alpamayo GUI — Visual QA](images/VQA_GUI.jpg)
+
+---
+
+### Derived Metrics: Speed & Steering Angle
+
+The Alpamayo model predicts a future trajectory as a sequence of waypoints (64 points at 10 Hz over a 6.4 s horizon). From these waypoints, we compute:
+
+- **Speed** — Euclidean displacement between consecutive waypoints divided by the timestep:
+  $$v_t = \frac{\| p_t - p_{t-1} \|}{\Delta t}, \quad \Delta t = 0.1\text{s}$$
+
+- **Steering angle** — Change in heading direction between consecutive steps:
+  $$\delta_t = \text{atan2}(\Delta y_t, \Delta x_t) - \text{atan2}(\Delta y_{t-1}, \Delta x_{t-1})$$
+  Normalized to $[-180°, 180°]$.
+
+These values are displayed:
+- On the **video overlay** (bottom-right info box, yellow with `*` marker)
+- In the **GUI metrics panel** (average and max values)
+
+> **Important:** Speed and steering are **not direct model outputs**. They are derived from trajectory geometry and should be interpreted accordingly.
 
 **Understanding the parameters:**
 
