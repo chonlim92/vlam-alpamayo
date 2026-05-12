@@ -64,8 +64,16 @@ def render_result_video(
 
     # Get trajectory from result or data sample
     trajectory_waypoints = None
+    gt_waypoints = None
+    traj_metrics = {}
     if result.get("trajectory") and "waypoints" in result["trajectory"]:
         trajectory_waypoints = np.array(result["trajectory"]["waypoints"])
+        if result["trajectory"].get("gt_waypoints"):
+            gt_waypoints = np.array(result["trajectory"]["gt_waypoints"])
+        if result["trajectory"].get("min_ade") is not None:
+            traj_metrics["min_ade"] = result["trajectory"]["min_ade"]
+        if result["trajectory"].get("min_fde") is not None:
+            traj_metrics["min_fde"] = result["trajectory"]["min_fde"]
     elif data_sample.get("trajectory") is not None:
         trajectory_waypoints = np.array(data_sample["trajectory"])
 
@@ -85,11 +93,17 @@ def render_result_video(
             wps = trajectory_waypoints
             if wps.ndim == 3:
                 wps = wps[0]
-            _draw_bev_minimap(canvas, wps, idx, total)
-            # Also draw trajectory on the camera view (simple BEV→image projection)
+            _draw_bev_minimap(canvas, wps, idx, total, gt_waypoints=gt_waypoints)
+            # Draw predicted trajectory on camera view (green)
             _draw_trajectory_on_camera(canvas, wps, idx, total)
+            # Draw GT trajectory on camera view (orange) if available
+            if gt_waypoints is not None:
+                _draw_trajectory_on_camera(
+                    canvas, gt_waypoints, idx, total,
+                    color_start=(255, 140, 0), color_fade=0.5,
+                )
             # Per-frame trajectory info (top-left)
-            _draw_frame_trajectory_info(canvas, wps, idx, total)
+            _draw_frame_trajectory_info(canvas, wps, idx, total, metrics=traj_metrics)
 
         # ── Reasoning text overlay (bottom) ──────────────────────────────
         visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 6, 0))
@@ -166,6 +180,8 @@ def render_trajectory_plot(trajectory: dict | np.ndarray | None) -> np.ndarray |
     # ADE / FDE metrics (if ground truth available)
     if isinstance(trajectory, dict) and trajectory.get("gt_waypoints") is not None:
         gt = np.array(trajectory["gt_waypoints"])
+        # Draw GT trajectory in orange
+        _draw_traj_on_bev(img, gt, size, color=(255, 140, 0), thickness=2)
         pred = waypoints[0] if waypoints.ndim == 3 else waypoints
         if gt.shape[0] > 0 and pred.shape[0] > 0:
             min_len = min(len(gt), len(pred))
@@ -175,6 +191,9 @@ def render_trajectory_plot(trajectory: dict | np.ndarray | None) -> np.ndarray |
                 img, f"ADE: {ade:.2f}m  FDE: {fde:.2f}m",
                 (10, size - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 180, 50), 1,
             )
+        # Legend
+        cv2.putText(img, "Pred", (size - 100, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _TRAJ_COLOR, 1)
+        cv2.putText(img, "GT", (size - 100, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1)
 
     return img
 
@@ -289,6 +308,7 @@ def _draw_bev_minimap(
     frame_idx: int,
     total_frames: int,
     map_size: int = 220,
+    gt_waypoints: np.ndarray | None = None,
 ) -> None:
     """Draw a BEV trajectory mini-map in the top-right corner."""
     h, w = canvas.shape[:2]
@@ -305,7 +325,22 @@ def _draw_bev_minimap(
     if wps.ndim != 2 or wps.shape[0] == 0:
         return
 
+    # Draw GT first (underneath) in orange
+    if gt_waypoints is not None and gt_waypoints.ndim == 2 and gt_waypoints.shape[0] > 0:
+        _draw_traj_on_bev_region(
+            canvas, gt_waypoints, x0, y0, map_size, frame_idx, total_frames,
+            color_base=(255, 140, 0),
+        )
+
+    # Draw predicted on top in green
     _draw_traj_on_bev_region(canvas, wps, x0, y0, map_size, frame_idx, total_frames)
+
+    # Legend
+    cv2.putText(canvas, "Pred", (x0 + 5, y0 + map_size - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, _TRAJ_COLOR, 1, cv2.LINE_AA)
+    if gt_waypoints is not None:
+        cv2.putText(canvas, "GT", (x0 + 5, y0 + map_size - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 140, 0), 1, cv2.LINE_AA)
 
 
 def _draw_traj_on_bev_region(
@@ -313,6 +348,7 @@ def _draw_traj_on_bev_region(
     wps: np.ndarray,
     x0: int, y0: int, size: int,
     frame_idx: int, total_frames: int,
+    color_base: tuple | None = None,
 ) -> None:
     """Draw trajectory points in a BEV region on the canvas."""
     # Use x, y columns (first two)
@@ -337,11 +373,19 @@ def _draw_traj_on_bev_region(
     pts = np.stack([px, py], axis=1)
     for i in range(len(pts) - 1):
         progress = i / max(len(pts) - 1, 1)
-        color = (
-            int(0 + 255 * progress),
-            int(255 - 100 * progress),
-            int(128 - 128 * progress),
-        )
+        if color_base is not None:
+            alpha = max(0.4, 1.0 - progress * 0.6)
+            color = (
+                int(color_base[0] * alpha),
+                int(color_base[1] * alpha),
+                int(color_base[2] * alpha),
+            )
+        else:
+            color = (
+                int(0 + 255 * progress),
+                int(255 - 100 * progress),
+                int(128 - 128 * progress),
+            )
         cv2.line(canvas, tuple(pts[i]), tuple(pts[i + 1]), color, 2)
 
     # Ego marker
@@ -352,7 +396,8 @@ def _draw_traj_on_bev_region(
     # Animate: show current position on trajectory based on frame progress
     if total_frames > 1:
         traj_idx = min(int(frame_idx / total_frames * len(pts)), len(pts) - 1)
-        cv2.circle(canvas, tuple(pts[traj_idx]), 4, (0, 0, 255), -1)
+        marker_color = color_base if color_base else (0, 0, 255)
+        cv2.circle(canvas, tuple(pts[traj_idx]), 4, marker_color, -1)
 
 
 def _draw_traj_on_bev(
@@ -391,6 +436,8 @@ def _draw_trajectory_on_camera(
     wps: np.ndarray,
     frame_idx: int,
     total_frames: int,
+    color_start: tuple = (0, 220, 100),
+    color_fade: float = 0.7,
 ) -> None:
     """Draw ego trajectory projected onto the camera view.
 
@@ -431,18 +478,17 @@ def _draw_trajectory_on_camera(
     # Draw trajectory line
     for i in range(len(pts) - 1):
         progress = i / max(len(pts) - 1, 1)
-        # Green fading to transparent
-        alpha = max(0.3, 1.0 - progress * 0.7)
+        alpha = max(0.3, 1.0 - progress * color_fade)
         color = (
-            int(0 * alpha),
-            int(220 * alpha),
-            int(100 * alpha),
+            int(color_start[0] * alpha),
+            int(color_start[1] * alpha),
+            int(color_start[2] * alpha),
         )
         thickness = max(1, int(4 * (1.0 - 0.5 * progress)))
         cv2.line(canvas, pts[i], pts[i + 1], color, thickness)
 
-    # Current position marker
-    if total_frames > 1:
+    # Current position marker (only for primary predicted trajectory)
+    if color_start == (0, 220, 100) and total_frames > 1:
         traj_idx = min(int(frame_idx / total_frames * len(pts)), len(pts) - 1)
         cv2.circle(canvas, pts[traj_idx], 6, (255, 80, 0), -1)
         cv2.circle(canvas, pts[traj_idx], 8, (255, 255, 255), 2)
@@ -491,6 +537,7 @@ def _draw_frame_trajectory_info(
     wps: np.ndarray,
     frame_idx: int,
     total_frames: int,
+    metrics: dict | None = None,
 ) -> None:
     """Draw per-frame trajectory position, speed, and heading on the video."""
     h, w = canvas.shape[:2]
@@ -514,8 +561,9 @@ def _draw_frame_trajectory_info(
         total_dist = np.sum(np.linalg.norm(np.diff(wps[:, :2], axis=0), axis=1))
         heading_deg = 0.0
 
-    # Semi-transparent info box (top-left)
-    box_w, box_h = 280, 90
+    # Determine box height based on whether metrics are present
+    has_metrics = metrics and (metrics.get("min_ade") is not None or metrics.get("min_fde") is not None)
+    box_w, box_h = 280, 112 if has_metrics else 90
     margin = 15
     overlay = canvas.copy()
     cv2.rectangle(overlay, (margin, margin), (margin + box_w, margin + box_h), (0, 0, 0), -1)
@@ -535,6 +583,14 @@ def _draw_frame_trajectory_info(
     y_pos += 22
     cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
     cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
+
+    # ADE/FDE metrics line
+    if has_metrics:
+        y_pos += 22
+        ade_str = f"ADE: {metrics['min_ade']:.3f}m" if metrics.get("min_ade") is not None else ""
+        fde_str = f"FDE: {metrics['min_fde']:.3f}m" if metrics.get("min_fde") is not None else ""
+        cv2.putText(canvas, ade_str, (margin + 8, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, fde_str, (margin + 150, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:

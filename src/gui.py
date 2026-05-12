@@ -343,8 +343,8 @@ def load_data_action(dataset_key: str, num_samples: int, data_mode: str) -> str:
 
 def run_reasoning_action(
     sample_idx: int, num_traj_samples: int,
-) -> tuple[str, str | None, object | None]:
-    """Run reasoning inference — returns (text, video_path, trajectory_image).
+) -> tuple[str, str | None, object | None, float | None, float | None, str]:
+    """Run reasoning inference — returns (text, video_path, trajectory_image, ade, fde, metrics_md).
 
     Video is rendered from the data sample's visual content independently
     of whether model inference succeeds.  A model is NOT required for
@@ -353,11 +353,11 @@ def run_reasoning_action(
     global _engine, _data_samples
 
     if not _data_samples:
-        return ("⚠️  No data loaded — use the Setup panel to load dataset samples first.", None, None)
+        return ("⚠️  No data loaded — use the Setup panel to load dataset samples first.", None, None, None, None, "")
 
     idx = int(sample_idx)
     if idx < 0 or idx >= len(_data_samples):
-        return (f"⚠️  Sample index out of range. Available: 0–{len(_data_samples) - 1}", None, None)
+        return (f"⚠️  Sample index out of range. Available: 0–{len(_data_samples) - 1}", None, None, None, None, "")
 
     data_sample = _data_samples[idx]
     config = _get_config()
@@ -400,7 +400,27 @@ def run_reasoning_action(
         except Exception as e:
             print(f"Trajectory render error: {e}")
 
-    return (text_out, video_path, traj_img)
+    # ── Extract metrics ─────────────────────────────────────────────
+    min_ade = None
+    min_fde = None
+    metrics_md = "*No metrics available — run inference with a loaded model.*"
+    if result and result.get("trajectory"):
+        traj = result["trajectory"]
+        min_ade = traj.get("min_ade")
+        min_fde = traj.get("min_fde")
+        if min_ade is not None or min_fde is not None:
+            lines = ["### Trajectory Metrics\n"]
+            lines.append("| Metric | Value |")
+            lines.append("|--------|-------|")
+            if min_ade is not None:
+                lines.append(f"| **minADE** | {min_ade:.4f} m |")
+            if min_fde is not None:
+                lines.append(f"| **minFDE** | {min_fde:.4f} m |")
+            lines.append(f"\n- Horizon: {traj.get('horizon_seconds', 6.4):.1f}s")
+            lines.append(f"- Waypoints: {traj.get('num_waypoints', '?')} @ {traj.get('frequency_hz', 10)} Hz")
+            metrics_md = "\n".join(lines)
+
+    return (text_out, video_path, traj_img, min_ade, min_fde, metrics_md)
 
 
 def _sample_has_visual_data(sample: dict) -> bool:
@@ -713,6 +733,29 @@ def build_gui() -> gr.Blocks:
                                     '(64 waypoints @ 10 Hz) in ego-vehicle BEV coordinates.</p>'
                                 )
 
+                            with gr.Tab("📊  Metrics", id="out-metrics"):
+                                metrics_ade = gr.Number(
+                                    label="minADE (m)",
+                                    value=None,
+                                    interactive=False,
+                                    precision=4,
+                                )
+                                metrics_fde = gr.Number(
+                                    label="minFDE (m)",
+                                    value=None,
+                                    interactive=False,
+                                    precision=4,
+                                )
+                                metrics_summary = gr.Markdown(
+                                    value="*Run inference to see trajectory metrics.*",
+                                    elem_classes="coc-panel",
+                                )
+                                gr.HTML(
+                                    '<p class="output-description">Trajectory evaluation: '
+                                    'Average Displacement Error (ADE) and Final Displacement Error (FDE) '
+                                    'between predicted and ground-truth trajectories.</p>'
+                                )
+
                 # Wire events
                 load_model_btn.click(
                     load_model_action,
@@ -727,7 +770,7 @@ def build_gui() -> gr.Blocks:
                 run_btn.click(
                     run_reasoning_action,
                     inputs=[sample_idx, num_traj],
-                    outputs=[result_output, result_video, result_traj_img],
+                    outputs=[result_output, result_video, result_traj_img, metrics_ade, metrics_fde, metrics_summary],
                 )
 
             # ━━━ TAB 2: Visual QA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
