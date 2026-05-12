@@ -27,114 +27,150 @@ DATASETS = {
     },
     "physical-ai-av-nurec": {
         "hf_id": "nvidia/PhysicalAI-Autonomous-Vehicles-NuRec",
-        "loader": "hf_parquet",
-        "parquet_path": None,
+        "loader": "unsupported",
         "description": (
             "918 dynamic neural-reconstructed 3D driving scenes (USDZ format) derived "
             "from the PhysicalAI-AV dataset. Used for closed-loop simulation and "
-            "evaluation with AlpaSim."
+            "evaluation with AlpaSim. ⚠️ USDZ format — not loadable in this app."
         ),
         "size": "1.77 TB",
         "url": "https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec",
     },
     # ── Public driving datasets (used in Alpamayo 1.5 training) ───────────
+    "coda-lm": {
+        "hf_id": "KaiChen1998/coda-lm-llava-format",
+        "loader": "hf_streaming",
+        "description": "Corner case analysis with multi-turn conversations on driving images.",
+        "size": "~1 GB",
+        "url": "https://huggingface.co/datasets/DLCV-BUAA/CODA-LM",
+        "image_keys": ["image"],
+        "qa_mode": "conversations",
+    },
+    "drive-action": {
+        "hf_id": "LiAuto-DriveAction/drive-action",
+        "loader": "hf_streaming",
+        "description": "Bilingual (EN/CN) multiple-choice VQA with multi-view driving images.",
+        "size": "~2 GB",
+        "url": "https://huggingface.co/datasets/LiAuto-DriveAction/drive-action",
+        "image_keys": ["image_0", "image_1", "image_2"],
+        "qa_mode": "drive_action",
+    },
+    "lingoqa": {
+        "hf_id": "runoob1/lingoqa",
+        "loader": "hf_streaming",
+        "description": "Language-grounded driving QA with 5 sequential video frames per sample.",
+        "size": "~1 GB",
+        "url": "https://huggingface.co/datasets/wayveai/LingoQA",
+        "image_keys": ["image_1", "image_2", "image_3", "image_4", "image_5"],
+        "qa_mode": "question_answer",
+    },
+    "nuscenesqa": {
+        "hf_id": "KevinNotSmile/nuscenes-qa-mini",
+        "loader": "hf_streaming",
+        "description": "VQA on nuScenes with 6 camera views + LiDAR BEV.",
+        "size": "~500 MB",
+        "url": "https://huggingface.co/datasets/qiantianwen/NuScenes-QA",
+        "image_keys": ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT",
+                        "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT"],
+        "qa_mode": "question_answer",
+    },
+    "drivegpt4": {
+        "hf_id": "owl10/Drivegpt4-BDD",
+        "loader": "hf_streaming",
+        "description": "Multi-modal driving dialogue with BDD video frames.",
+        "size": "~2 GB",
+        "url": "https://huggingface.co/datasets/OpenDriveLab/DriveGPT4",
+        "image_keys": ["png"],
+        "qa_mode": "metadata_only",
+    },
+    # ── Datasets with image paths (not embedded) — stream metadata only ──
     "drivelm": {
         "hf_id": "OpenDriveLab/DriveLM",
         "loader": "hf_streaming",
-        "description": "Driving language-model QA pairs for end-to-end AD.",
-        "size": "~2 GB",
+        "description": "Driving language-model QA pairs with nuScenes multi-view images.",
+        "size": "~2 GB (gated — requires access approval)",
         "url": "https://huggingface.co/datasets/OpenDriveLab/DriveLM",
+        "image_keys": [],
+        "qa_mode": "metadata_only",
     },
-    "lingoqa": {
-        "hf_id": "wayveai/LingoQA",
+    "omnidrive": {
+        "hf_id": "runoob1/OmniDrive_test",
         "loader": "hf_streaming",
-        "description": "Language-grounded driving QA benchmark.",
+        "description": "Multi-task 3D driving VQA — scene, traffic, grounding, planning.",
         "size": "~1 GB",
-        "url": "https://huggingface.co/datasets/wayveai/LingoQA",
+        "url": "https://huggingface.co/datasets/NVlabs/OmniDrive",
+        "image_keys": [],
+        "qa_mode": "question_answer",
     },
-    "nuscenesqa": {
-        "hf_id": "qiantianwen/NuScenes-QA",
+    "nuinstruct": {
+        "hf_id": "runoob1/NuInstruct_test_accuracytask",
         "loader": "hf_streaming",
-        "description": "Question answering on nuScenes driving scenes.",
+        "description": "Instruction-following VQA on nuScenes with multiple sub-tasks.",
         "size": "~500 MB",
-        "url": "https://huggingface.co/datasets/qiantianwen/NuScenes-QA",
+        "url": "https://huggingface.co/datasets/nuInstruct/nuInstruct",
+        "image_keys": [],
+        "qa_mode": "question_answer",
     },
+    # ── Non-standard / special format datasets ───────────────────────────
     "navsim": {
         "hf_id": "autonomousvision/navsim",
-        "loader": "hf_streaming",
-        "description": "Navigation simulation benchmark for driving.",
+        "loader": "unsupported",
+        "description": (
+            "Navigation simulation benchmark — custom OpenScene format. "
+            "⚠️ Not loadable via standard HF streaming."
+        ),
         "size": "variable",
         "url": "https://huggingface.co/datasets/autonomousvision/navsim",
     },
-    "omnidrive": {
-        "hf_id": "NVlabs/OmniDrive",
-        "loader": "hf_streaming",
-        "description": "Multi-task driving benchmark (3D QA, counterfactual reasoning).",
-        "size": "~1 GB",
-        "url": "https://huggingface.co/datasets/NVlabs/OmniDrive",
-    },
     "talk2car": {
         "hf_id": "talk2car/Talk2Car",
-        "loader": "hf_streaming",
-        "description": "Natural language grounding in driving scenes.",
+        "loader": "unsupported",
+        "description": (
+            "Natural language grounding in driving scenes — JSON + nuScenes images. "
+            "⚠️ Requires nuScenes image download separately."
+        ),
         "size": "~500 MB",
         "url": "https://huggingface.co/datasets/talk2car/Talk2Car",
     },
-    "coda-lm": {
-        "hf_id": "DLCV-BUAA/CODA-LM",
-        "loader": "hf_streaming",
-        "description": "Corner case analysis for autonomous driving.",
-        "size": "~1 GB",
-        "url": "https://huggingface.co/datasets/DLCV-BUAA/CODA-LM",
-    },
-    "drivegpt4": {
-        "hf_id": "OpenDriveLab/DriveGPT4",
-        "loader": "hf_streaming",
-        "description": "Multi-modal driving dialogue dataset.",
-        "size": "~2 GB",
-        "url": "https://huggingface.co/datasets/OpenDriveLab/DriveGPT4",
-    },
-    "drive-action": {
-        "hf_id": "Drive-Action/Drive-Action",
-        "loader": "hf_streaming",
-        "description": "Driving action prediction dataset.",
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/Drive-Action/Drive-Action",
-    },
     "maplm": {
-        "hf_id": "MapLM/MapLM",
-        "loader": "hf_streaming",
-        "description": "Map-centric language-model driving dataset.",
+        "hf_id": "LLVM-AD/maplm_v2",
+        "loader": "unsupported",
+        "description": (
+            "Map-centric driving VQA — custom loader script, not viewer-compatible. "
+            "⚠️ Requires custom loading."
+        ),
         "size": "variable",
         "url": "https://huggingface.co/datasets/MapLM/MapLM",
     },
     "mm-au": {
-        "hf_id": "MM-AU/MM-AU",
-        "loader": "hf_streaming",
-        "description": "Multi-modal action understanding for driving.",
+        "hf_id": "Yiming-Li/MM-AU",
+        "loader": "unsupported",
+        "description": (
+            "Multi-modal action understanding — raw zip files only. "
+            "⚠️ No structured schema available."
+        ),
         "size": "variable",
-        "url": "https://huggingface.co/datasets/MM-AU/MM-AU",
-    },
-    "nuinstruct": {
-        "hf_id": "nuInstruct/nuInstruct",
-        "loader": "hf_streaming",
-        "description": "Instruction-following dataset on nuScenes.",
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/nuInstruct/nuInstruct",
+        "url": "https://huggingface.co/datasets/Yiming-Li/MM-AU",
     },
     "senna": {
-        "hf_id": "Senna/Senna",
-        "loader": "hf_streaming",
-        "description": "Driving scene understanding and QA.",
-        "size": "variable",
-        "url": "https://huggingface.co/datasets/Senna/Senna",
+        "hf_id": "hustvl/Senna",
+        "loader": "unsupported",
+        "description": (
+            "Senna is a model/system, not a downloadable dataset. "
+            "⚠️ Generates VQA data from nuScenes using LLaVA."
+        ),
+        "size": "N/A",
+        "url": "https://huggingface.co/hustvl/Senna",
     },
     "roadwork": {
-        "hf_id": "Roadwork/Roadwork",
-        "loader": "hf_streaming",
-        "description": "Construction zone and roadwork scenario data.",
+        "hf_id": "anuragxel/roadwork-dataset",
+        "loader": "unsupported",
+        "description": (
+            "Construction zone data — raw zip files (images, video, segmentation). "
+            "⚠️ No structured schema on HF."
+        ),
         "size": "variable",
-        "url": "https://huggingface.co/datasets/Roadwork/Roadwork",
+        "url": "https://huggingface.co/datasets/anuragxel/roadwork-dataset",
     },
 }
 
@@ -160,13 +196,176 @@ def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num
     login(token=config.huggingface_token)
 
     loader = ds_info["loader"]
+    if loader == "unsupported":
+        raise ValueError(
+            f"Dataset '{dataset_key}' is not loadable in this app.\n"
+            f"{ds_info['description']}"
+        )
     if loader == "physical_ai_av_sdk":
         return _load_physical_ai_av_sdk(config, num_samples)
     if loader == "hf_parquet":
         return _load_hf_parquet(
             ds_info["hf_id"], ds_info.get("parquet_path"), num_samples,
         )
-    return _load_hf_streaming(ds_info["hf_id"], num_samples)
+    # hf_streaming — normalize samples after loading
+    raw_samples = _load_hf_streaming(ds_info["hf_id"], num_samples)
+    return [_normalize_sample(s, ds_info) for s in raw_samples]
+
+
+# ── Sample normalization ──────────────────────────────────────────────────────
+# All HF streaming datasets are normalized to a common schema:
+#   images:   list[PIL.Image] — extracted from known image keys
+#   question: str             — extracted from QA fields
+#   answer:   str             — extracted from QA fields
+#   metadata: dict            — all remaining fields
+#   source:   str             — "hf_streaming"
+
+def _normalize_sample(raw: dict, ds_info: dict) -> dict:
+    """Normalize a raw HF dataset row to the common sample schema."""
+    sample = {"source": "hf_streaming", "metadata": {}}
+
+    image_keys = ds_info.get("image_keys", [])
+    qa_mode = ds_info.get("qa_mode", "metadata_only")
+
+    # ── Extract images ────────────────────────────────────────────────
+    images = []
+    used_keys = set()
+
+    # Try configured image keys first
+    for key in image_keys:
+        val = raw.get(key)
+        if val is not None:
+            img = _to_pil_image(val)
+            if img is not None:
+                images.append(img)
+                used_keys.add(key)
+
+    # Auto-detect image fields if none configured
+    if not images:
+        for key, val in raw.items():
+            if _is_image_value(val):
+                img = _to_pil_image(val)
+                if img is not None:
+                    images.append(img)
+                    used_keys.add(key)
+
+    if images:
+        sample["images"] = images
+
+    # ── Extract QA text ───────────────────────────────────────────────
+    if qa_mode == "conversations":
+        # CODA-LM style: conversations = [{from: "human", value: "..."}, {from: "gpt", value: "..."}]
+        convos = raw.get("conversations", [])
+        if isinstance(convos, (list, tuple)) and convos:
+            q_parts, a_parts = [], []
+            for turn in convos:
+                if isinstance(turn, dict):
+                    role = turn.get("from", "")
+                    text = turn.get("value", "")
+                    if role in ("human", "user"):
+                        q_parts.append(text)
+                    elif role in ("gpt", "assistant"):
+                        a_parts.append(text)
+            sample["question"] = "\n".join(q_parts) if q_parts else ""
+            sample["answer"] = "\n".join(a_parts) if a_parts else ""
+        used_keys.add("conversations")
+
+    elif qa_mode == "drive_action":
+        # Drive-Action style: content_en = {question, answer, options: {A, B, C, D}}
+        content = raw.get("content_en") or raw.get("content_cn") or {}
+        if isinstance(content, dict):
+            q = content.get("question", "")
+            opts = content.get("options", {})
+            if isinstance(opts, dict):
+                opt_text = "\n".join(f"  {k}. {v}" for k, v in sorted(opts.items()))
+                q = f"{q}\n{opt_text}" if opt_text else q
+            sample["question"] = q
+            sample["answer"] = content.get("answer", "")
+        else:
+            sample["question"] = raw.get("question", "")
+            sample["answer"] = raw.get("answer", "")
+        used_keys.update({"content_en", "content_cn", "question_category",
+                          "qa_l0", "qa_l1", "question_slice_id"})
+
+    elif qa_mode == "question_answer":
+        sample["question"] = str(raw.get("question", ""))
+        sample["answer"] = str(raw.get("answer", ""))
+        used_keys.update({"question", "answer"})
+
+    else:
+        # metadata_only — try to detect QA fields generically
+        for qk in ("question", "query", "prompt", "instruction", "input"):
+            if qk in raw:
+                sample["question"] = str(raw[qk])
+                used_keys.add(qk)
+                break
+        for ak in ("answer", "response", "output", "text", "completion"):
+            if ak in raw:
+                sample["answer"] = str(raw[ak])
+                used_keys.add(ak)
+                break
+
+    # ── Remaining fields → metadata ──────────────────────────────────
+    for key, val in raw.items():
+        if key not in used_keys:
+            # Skip large binary/image data in metadata
+            if _is_image_value(val):
+                sample["metadata"][key] = f"<image: {type(val).__name__}>"
+            elif isinstance(val, (bytes, bytearray)):
+                sample["metadata"][key] = f"<bytes: {len(val)}>"
+            else:
+                sample["metadata"][key] = val
+
+    return sample
+
+
+def _to_pil_image(val):
+    """Try to convert a value to a PIL Image. Returns None on failure."""
+    try:
+        from PIL import Image
+        if isinstance(val, Image.Image):
+            return val
+    except ImportError:
+        return None
+
+    # numpy array
+    if isinstance(val, np.ndarray) and val.ndim in (2, 3):
+        try:
+            from PIL import Image
+            if val.dtype != np.uint8:
+                if val.max() <= 1.0:
+                    val = (val * 255).clip(0, 255).astype(np.uint8)
+                else:
+                    val = val.clip(0, 255).astype(np.uint8)
+            return Image.fromarray(val)
+        except Exception:
+            return None
+
+    # dict with "bytes" key (HF Image feature decoded)
+    if isinstance(val, dict) and "bytes" in val:
+        try:
+            import io
+            from PIL import Image
+            return Image.open(io.BytesIO(val["bytes"]))
+        except Exception:
+            return None
+
+    return None
+
+
+def _is_image_value(val) -> bool:
+    """Check if a value looks like image data."""
+    try:
+        from PIL import Image
+        if isinstance(val, Image.Image):
+            return True
+    except ImportError:
+        pass
+    if isinstance(val, np.ndarray) and val.ndim in (2, 3) and val.shape[-1] in (1, 3, 4):
+        return True
+    if isinstance(val, dict) and "bytes" in val:
+        return True
+    return False
 
 
 # ── PhysicalAI-AV SDK loader ─────────────────────────────────────────────────

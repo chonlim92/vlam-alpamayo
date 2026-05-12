@@ -205,22 +205,44 @@ def load_data_action(dataset_key: str, num_samples: int) -> str:
 
         # Show per-sample info
         for i, s in enumerate(_data_samples):
-            has_video = "camera_front_wide_120fov" in s
-            has_ego = "egomotion" in s
-            clip_id = s.get("clip_id", "")
-            cluster = s.get("event_cluster", "")
-
             parts = []
-            if has_video:
-                nf = len(s["camera_front_wide_120fov"]) if isinstance(s.get("camera_front_wide_120fov"), list) else "?"
-                parts.append(f"📹 {nf} frames")
-            if has_ego:
-                parts.append("🗺️ egomotion")
-            if cluster:
-                parts.append(f"🏷️ {cluster}")
+            source = s.get("source", "")
+
+            if source == "physical_ai_av_sdk":
+                # SDK clip
+                has_video = "camera_front_wide_120fov" in s
+                has_ego = "egomotion" in s
+                clip_id = s.get("clip_id", "")
+                cluster = s.get("event_cluster", "")
+                if has_video:
+                    nf = len(s["camera_front_wide_120fov"]) if isinstance(s.get("camera_front_wide_120fov"), list) else "?"
+                    parts.append(f"📹 {nf} frames")
+                if has_ego:
+                    parts.append("🗺️ egomotion")
+                if cluster:
+                    parts.append(f"🏷️ {cluster}")
+                label = clip_id[:12] + "…" if len(clip_id) > 12 else (clip_id or f"clip-{i}")
+
+            elif source == "hf_streaming":
+                # Normalized streaming sample
+                images = s.get("images", [])
+                question = s.get("question", "")
+                answer = s.get("answer", "")
+                if images:
+                    parts.append(f"🖼️ {len(images)} image(s)")
+                if question:
+                    parts.append(f"❓ Q: {question[:50]}{'…' if len(question)>50 else ''}")
+                if answer:
+                    parts.append("✅ has answer")
+                meta_id = s.get("metadata", {}).get("id", "")
+                label = str(meta_id)[:12] or f"sample-{i}"
+
+            else:
+                # Raw / parquet / other
+                parts.append("📄 raw data")
+                label = f"sample-{i}"
 
             detail = " · ".join(parts) if parts else "metadata only"
-            label = clip_id[:12] + "…" if len(clip_id) > 12 else clip_id
             lines.append(f"  [{i}] {label}  {detail}")
 
         return "\n".join(lines)
@@ -250,10 +272,23 @@ def run_reasoning_action(
 
         text_out = _format_reasoning_result(result)
 
-        # Skip video/trajectory rendering for pre-annotated parquet data
+        # Render video/images for any source that has visual data
         video_path = None
         traj_img = None
-        if result.get("source") != "parquet_annotation":
+        source = result.get("source", "")
+
+        if source == "parquet_annotation":
+            # Pure text — no visuals
+            pass
+        elif source == "hf_streaming":
+            # Streaming datasets — render images as a video if available
+            if result.get("has_images"):
+                config = _get_config()
+                video_path = render_result_video(
+                    _data_samples[idx], result, output_dir=config.output_dir,
+                )
+        else:
+            # SDK / model inference — full video + trajectory
             config = _get_config()
             video_path = render_result_video(
                 _data_samples[idx], result, output_dir=config.output_dir,

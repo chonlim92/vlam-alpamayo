@@ -154,7 +154,7 @@ def _extract_frames(data_sample: dict) -> list[np.ndarray]:
                 return frames
 
     # Try top-level image/images field
-    for key in ("image", "frame", "frames"):
+    for key in ("image", "frame", "frames", "png"):
         raw = data_sample.get(key)
         if raw is not None:
             frames = _convert_to_frames(raw)

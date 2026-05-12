@@ -26,12 +26,13 @@ class InferenceEngine:
     def run_reasoning(self, data_sample) -> dict:
         """Run Chain-of-Causation reasoning on a data sample.
 
-        If the sample already contains pre-annotated reasoning (e.g. from the
-        ood_reasoning parquet), return that directly.  Otherwise, run the model.
+        Handles three types of data:
+        1. Pre-annotated parquet rows → return CoC text directly
+        2. Normalized HF streaming samples → show QA content + images
+        3. SDK/model-ready samples with camera data → run full model inference
 
         Args:
-            data_sample: A data sample — either a model-ready dict with camera
-                         images, or a parquet row with pre-annotated reasoning.
+            data_sample: A data sample dict.
 
         Returns:
             Dictionary with reasoning traces and trajectory predictions.
@@ -39,6 +40,10 @@ class InferenceEngine:
         # ── Check if this is a pre-annotated parquet row ─────────────
         if self._is_parquet_row(data_sample):
             return self._format_parquet_result(data_sample)
+
+        # ── Normalized HF streaming sample (has 'source' == 'hf_streaming') ──
+        if data_sample.get("source") == "hf_streaming":
+            return self._format_streaming_result(data_sample)
 
         # ── Full model inference ─────────────────────────────────────
         if self.model is None:
@@ -133,6 +138,63 @@ class InferenceEngine:
             "trajectory": None,
             "timestamp": datetime.now().isoformat(),
             "source": "parquet_annotation",
+        }
+
+    def _format_streaming_result(self, sample: dict) -> dict:
+        """Format a normalized HF streaming sample as a displayable result.
+
+        Shows the QA content and metadata. Images are displayed via the
+        visualization pipeline (the GUI checks for 'images' key).
+        """
+        question = sample.get("question", "")
+        answer = sample.get("answer", "")
+        metadata = sample.get("metadata", {})
+        images = sample.get("images", [])
+
+        lines = []
+        if images:
+            lines.append(f"Images:          {len(images)} frame(s)")
+        if metadata.get("id"):
+            lines.append(f"ID:              {metadata['id']}")
+
+        # Show QA content
+        if question:
+            lines.extend([
+                "",
+                "━━━  Question  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "",
+                question,
+            ])
+        if answer:
+            lines.extend([
+                "",
+                "━━━  Ground-Truth Answer  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "",
+                answer,
+            ])
+
+        # Show non-trivial metadata
+        meta_items = {k: v for k, v in metadata.items()
+                      if k not in ("id",) and not str(v).startswith("<")}
+        if meta_items:
+            lines.extend([
+                "",
+                "━━━  Metadata  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "",
+            ])
+            for k, v in meta_items.items():
+                val_str = str(v)
+                if len(val_str) > 200:
+                    val_str = val_str[:200] + "…"
+                lines.append(f"{k}: {val_str}")
+
+        return {
+            "model": f"{MODEL_INFO[self.model_key]['name']} (dataset sample)",
+            "reasoning_trace": "\n".join(lines) if lines else "(no content in this sample)",
+            "trajectory": None,
+            "timestamp": datetime.now().isoformat(),
+            "source": "hf_streaming",
+            "has_images": bool(images),
         }
 
     def run_vqa(self, data_sample, question: str) -> dict:
