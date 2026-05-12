@@ -684,29 +684,14 @@ def _write_browser_compatible_video(
     """Write RGB frames to a browser-playable MP4 (H.264).
 
     Strategy (in priority order):
-    1. imageio-ffmpeg — writes H.264 directly via bundled ffmpeg
-    2. PyAV (av package) — writes H.264 via libavcodec bindings
-    3. OpenCV H.264 — only works if system ffmpeg backend is compiled in
-    4. OpenCV mp4v + ffmpeg re-encode — write mp4v then re-encode
-    5. OpenCV mp4v fallback — browsers can't play but file is valid
+    1. PyAV (av package) — writes H.264 via libavcodec bindings
+    2. OpenCV H.264 — only works if system ffmpeg backend is compiled in
+    3. OpenCV mp4v + ffmpeg re-encode — write mp4v then re-encode
 
     Input frames are in RGB order.
     """
 
-    # Strategy 1: imageio-ffmpeg (accepts RGB directly)
-    try:
-        import imageio.v3 as iio
-        h264_path = video_path.with_suffix(".mp4")
-        with iio.imopen(str(h264_path), "w", plugin="pyav") as writer:
-            writer.init_video_stream("libx264", fps=fps)
-            for frame in frames:
-                writer.write_frame(frame)
-        if h264_path.exists() and h264_path.stat().st_size > 0:
-            return h264_path
-    except Exception:
-        pass
-
-    # Strategy 2: PyAV (accepts RGB directly)
+    # Strategy 1: PyAV directly (cleanest H.264 path, accepts RGB)
     try:
         import av as _av
         h264_path = video_path.with_suffix(".mp4")
@@ -728,23 +713,33 @@ def _write_browser_compatible_video(
     except Exception:
         pass
 
-    # Strategy 3: OpenCV H.264 (needs BGR)
+    # Strategy 2: OpenCV H.264 (needs BGR)
+    # Suppress noisy OpenCV/FFmpeg codec probe errors (h264_v4l2m2m etc.)
     h264_path = video_path.with_suffix(".mp4")
-    for codec in ("avc1", "x264", "H264"):
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            writer = cv2.VideoWriter(str(h264_path), fourcc, fps, (w, h))
-            if writer.isOpened():
-                for f in frames:
-                    writer.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
+    import os as _os
+    _old_loglevel = _os.environ.get("OPENCV_FFMPEG_LOGLEVEL", None)
+    _os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "quiet"
+    try:
+        for codec in ("avc1", "x264"):
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*codec)
+                writer = cv2.VideoWriter(str(h264_path), fourcc, fps, (w, h))
+                if writer.isOpened():
+                    for f in frames:
+                        writer.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
+                    writer.release()
+                    if h264_path.exists() and h264_path.stat().st_size > 0:
+                        return h264_path
                 writer.release()
-                if h264_path.exists() and h264_path.stat().st_size > 0:
-                    return h264_path
-            writer.release()
-        except Exception:
-            continue
+            except Exception:
+                continue
+    finally:
+        if _old_loglevel is None:
+            _os.environ.pop("OPENCV_FFMPEG_LOGLEVEL", None)
+        else:
+            _os.environ["OPENCV_FFMPEG_LOGLEVEL"] = _old_loglevel
 
-    # Strategy 4: OpenCV mp4v + ffmpeg re-encode (needs BGR)
+    # Strategy 3: OpenCV mp4v + ffmpeg re-encode (needs BGR)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(video_path), fourcc, fps, (w, h))
     for f in frames:
