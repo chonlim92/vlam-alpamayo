@@ -532,8 +532,11 @@ def run_vqa_action(sample_idx: int, question: str) -> str:
         return "⚠️  No data loaded. Load dataset samples from the Reasoning tab first."
 
     idx = int(sample_idx)
-    if idx < 0 or idx >= len(_data_samples):
-        return "⚠️  Sample index out of range."
+    # Clamp to valid range (slider max may exceed loaded samples)
+    if idx >= len(_data_samples):
+        idx = len(_data_samples) - 1
+    if idx < 0:
+        idx = 0
 
     if not question.strip():
         return "⚠️  Please enter a question."
