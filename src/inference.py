@@ -342,7 +342,7 @@ class InferenceEngine:
 
         from alpamayo1_5 import helper
 
-        # Build chat messages with the question
+        # Build chat messages from frames, then append question
         clip_id = data_sample.get("clip_id")
         if clip_id and data_sample.get("source") == "physical_ai_av_sdk":
             # SDK sample — use load_physical_aiavdataset for model-ready data
@@ -351,7 +351,6 @@ class InferenceEngine:
             messages = helper.create_message(
                 frames=data["image_frames"].flatten(0, 1),
                 camera_indices=data["camera_indices"],
-                question=question,
             )
         else:
             # Fallback: try to build messages from images in the sample
@@ -360,8 +359,10 @@ class InferenceEngine:
                 images = data_sample["camera_front_wide_120fov"]
             messages = helper.create_message(
                 frames=images,
-                question=question,
             )
+
+        # Append the user question to the conversation
+        messages.append({"role": "user", "content": question})
 
         # Tokenize
         processor = helper.get_processor(self.model.tokenizer)
