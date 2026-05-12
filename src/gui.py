@@ -333,16 +333,14 @@ def _build_dataset_table() -> str:
     return "\n".join(lines)
 
 
-def build_gui() -> gr.Blocks:
-    """Build the professional Gradio interface."""
-
-    alpamayo_theme = gr.themes.Base(
-        primary_hue=gr.themes.Color(
-            c50="#f0fdf4", c100="#dcfce7", c200="#bbf7d0", c300="#86efac",
-            c400="#4ade80", c500="#76b900", c600="#5a9e00", c700="#4d7c0f",
-            c800="#3f6212", c900="#365314", c950="#1a2e05",
-        ),
-        secondary_hue=gr.themes.colors.slate,
+# ── Theme ─────────────────────────────────────────────────────────────────────
+alpamayo_theme = gr.themes.Base(
+    primary_hue=gr.themes.Color(
+        c50="#f0fdf4", c100="#dcfce7", c200="#bbf7d0", c300="#86efac",
+        c400="#4ade80", c500="#76b900", c600="#5a9e00", c700="#4d7c0f",
+        c800="#3f6212", c900="#365314", c950="#1a2e05",
+    ),
+    secondary_hue=gr.themes.colors.slate,
         neutral_hue=gr.themes.colors.slate,
         font=gr.themes.GoogleFont("Inter"),
         font_mono=gr.themes.GoogleFont("JetBrains Mono"),
@@ -362,10 +360,12 @@ def build_gui() -> gr.Blocks:
         button_secondary_border_color="*neutral_300",
     )
 
+
+def build_gui() -> gr.Blocks:
+    """Build the professional Gradio interface."""
+
     with gr.Blocks(
         title="VLAM-Alpamayo — Autonomous Driving Reasoning",
-        theme=alpamayo_theme,
-        css=CUSTOM_CSS,
     ) as app:
 
         # ── Header ───────────────────────────────────────────────────
@@ -493,7 +493,6 @@ def build_gui() -> gr.Blocks:
                                     label="Chain-of-Causation Output",
                                     interactive=False,
                                     lines=24,
-                                    show_copy_button=True,
                                 )
 
                 # Wire events
@@ -556,7 +555,6 @@ def build_gui() -> gr.Blocks:
                             label="Model Response",
                             interactive=False,
                             lines=14,
-                            show_copy_button=True,
                             elem_classes="vqa-answer-box",
                         )
 
@@ -605,6 +603,8 @@ def launch_gui(config: AppConfig | None = None, share: bool = False):
         server_name=_config.gui_host,
         server_port=_config.gui_port,
         share=share,
+        theme=alpamayo_theme,
+        css=CUSTOM_CSS,
     )
 
 

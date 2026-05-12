@@ -39,11 +39,15 @@ This project supports **14 driving datasets** streamed on-demand from Hugging Fa
 
 ### Hugging Face Access
 
-You **must** request access to these gated resources before using the models:
+You **must** request access to these gated datasets before using them (accept the license on each page):
 
-1. [nvidia/Alpamayo-R1-10B](https://huggingface.co/nvidia/Alpamayo-R1-10B) (Alpamayo 1 weights)
-2. [nvidia/Alpamayo-1.5-10B](https://huggingface.co/nvidia/Alpamayo-1.5-10B) (Alpamayo 1.5 weights)
-3. [nvidia/PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (dataset)
+1. [nvidia/PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (primary dataset)
+2. [nvidia/PhysicalAI-Autonomous-Vehicles-NuRec](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec) (neural-reconstructed scenes)
+
+The model weights are openly available (no access request needed):
+
+- [nvidia/Alpamayo-R1-10B](https://huggingface.co/nvidia/Alpamayo-R1-10B) (Alpamayo 1)
+- [nvidia/Alpamayo-1.5-10B](https://huggingface.co/nvidia/Alpamayo-1.5-10B) (Alpamayo 1.5)
 
 Get your token at: https://huggingface.co/settings/tokens
 
@@ -91,7 +95,31 @@ pip install --no-deps git+https://github.com/NVlabs/alpamayo1.5.git
 
 > **Note:** If `flash-attn` fails to build, the app falls back to PyTorch's SDPA attention (the default in `config/.env.sample`).
 
-### 5. Configure your Hugging Face token
+### 5. Authenticate with Hugging Face
+
+Log in to download model weights and access gated datasets:
+
+```bash
+hf auth login
+```
+
+Paste your token from https://huggingface.co/settings/tokens ("Read" scope is sufficient).
+
+### 6. Download model weights
+
+The model weights (~22 GB each) are cached locally after the first download:
+
+```bash
+# Alpamayo 1.5 (recommended)
+python -c "from huggingface_hub import snapshot_download; snapshot_download('nvidia/Alpamayo-1.5-10B')"
+
+# Alpamayo 1 (optional)
+python -c "from huggingface_hub import snapshot_download; snapshot_download('nvidia/Alpamayo-R1-10B')"
+```
+
+> **Tip:** On a 100 MB/s connection, expect ~3–4 minutes per model. Subsequent runs use the cache.
+
+### 7. Configure the application
 
 Copy the sample config and set your token:
 
@@ -107,7 +135,7 @@ HUGGINGFACE_API_TOKEN=hf_your_token_here
 
 > **Note:** `config/.env` is git-ignored. Only `config/.env.sample` (with placeholder values) is tracked.
 
-Or set it as an environment variable:
+Alternatively, set it as an environment variable:
 
 ```bash
 export HUGGINGFACE_API_TOKEN=hf_your_token_here
