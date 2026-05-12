@@ -4,7 +4,6 @@ torch>=2.8.0
 transformers>=4.57.1
 huggingface-hub>=0.30.0
 datasets>=3.0.0
-deepspeed>=0.17.4
 gradio>=5.0.0
 opencv-python>=4.8.0
 numpy>=1.26.0
