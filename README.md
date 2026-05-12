@@ -219,6 +219,37 @@ For full usage details, see [docs/usage.md](docs/usage.md).
 
 ---
 
+## GUI Features
+
+The Gradio web interface provides a single-page layout with:
+
+### Output Panel
+
+- **Annotated Video** — Multi-camera composite with:
+  - Predicted trajectory (green) and ground-truth trajectory (orange) overlaid on camera view
+  - BEV mini-map (top-right) with Pred/GT legend
+  - Per-frame trajectory info + ADE/FDE metrics (top-left)
+  - Compact CoC reasoning text (bottom, 2-line scrolling bar)
+  - Timeline progress bar
+- **Trajectory (BEV)** — Zoomable, full-screen capable Bird's-Eye-View plot showing predicted vs GT trajectories with ADE/FDE text
+- **Metrics** — minADE and minFDE values displayed alongside the trajectory plot
+
+### Key Parameters
+
+| Parameter | Description |
+|---|---|
+| **Samples to Load** | Number of **driving scenes/clips** to download from the dataset. Each is a distinct driving scenario (different timestamp, road, situation). Use "Sample Index" to select which one to run inference on. |
+| **Trajectory Samples** | Number of **predicted future trajectories** the model generates per scene. The model stochastically samples multiple possible driving paths — more samples give better coverage of possible behaviors and a more robust minADE/minFDE (best-of-N metric), but require more VRAM. E.g., 8 trajectory samples → 8 predicted paths drawn on the BEV plot. |
+| **Sample Index** | Which loaded data sample (scene) to run inference on (0-indexed). |
+
+### Tabs
+
+1. **Reasoning** — Main inference tab with data loading, model controls, video output, trajectory plot, and metrics
+2. **Visual QA** — Ask natural-language questions about a loaded driving scene (Alpamayo 1.5 only)
+3. **Reference** — Model comparison table and supported dataset list
+
+---
+
 ## Project Structure
 
 ```

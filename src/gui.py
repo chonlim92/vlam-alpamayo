@@ -727,11 +727,12 @@ def build_gui() -> gr.Blocks:
                         # ── Trajectory + Metrics (side by side) ───────
                         with gr.Row():
                             with gr.Column(scale=2):
-                                gr.HTML('<p class="section-title">Trajectory</p>')
+                                gr.HTML('<p class="section-title">Trajectory (BEV)</p>')
                                 result_traj_img = gr.Image(
                                     label="Bird's-Eye-View Trajectory",
-                                    interactive=False,
+                                    interactive=True,
                                     height=350,
+                                    show_fullscreen_button=True,
                                 )
                             with gr.Column(scale=1, min_width=220):
                                 gr.HTML('<p class="section-title">Metrics</p>')

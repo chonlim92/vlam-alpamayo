@@ -65,32 +65,46 @@ python -m src.cli gui --share
 
 ## GUI Usage
 
-The web GUI (powered by Gradio) has three tabs:
+The web GUI (powered by Gradio) has three tabs with a single-page output layout (no sub-tabs for output):
 
 ### 1. Reasoning Inference Tab
 
 1. **Select Model** from the dropdown (`alpamayo-1` or `alpamayo-1.5`)
 2. Click **Load Model** — wait for confirmation
 3. **Select Dataset** from the dropdown (14 datasets available)
-4. Set **Number of Data Samples** and click **Load Data**
+4. Set **Samples to Load** and click **Load Data**
 5. Adjust **Sample Index** and **Trajectory Samples** count
 6. Click **Run Reasoning** to generate output
 
-Results appear in three sub-tabs:
-- **📹 Video** — Annotated video with camera frames, BEV trajectory mini-map, scrolling reasoning text, and timeline bar. Auto-plays in the browser. Requires ffmpeg for H.264 encoding.
-- **🗺️ Trajectory** — Interactive BEV trajectory plot image showing predicted waypoints.
-- **📝 Text** — Full reasoning trace and trajectory metadata.
+**Output (single-page, no tabs):**
+
+- **Annotated Video** — Multi-camera composite with:
+  - Predicted trajectory (green) and ground-truth trajectory (orange) on camera view
+  - BEV mini-map (top-right) with Pred/GT legend
+  - Per-frame trajectory info + ADE/FDE metrics (top-left, cyan text)
+  - Compact CoC reasoning text (bottom, 2-line scrolling bar)
+  - Timeline progress bar
+- **Trajectory (BEV)** — Zoomable, full-screen capable Bird's-Eye-View plot showing predicted vs GT trajectories with ADE/FDE. Supports pinch-zoom and fullscreen button.
+- **Metrics** — minADE and minFDE values displayed side-by-side with the trajectory plot, plus a summary markdown table.
+
+**Understanding the parameters:**
+
+| Parameter | What it controls |
+|---|---|
+| **Samples to Load** | Number of **driving scenes/clips** to download. Each is a distinct scenario (different road, timestamp). |
+| **Trajectory Samples** | Number of **predicted future paths** the model generates per scene. More = better minADE/minFDE, higher VRAM. E.g., 8 → the model predicts 8 possible futures, minADE picks the best. |
+| **Sample Index** | Which loaded scene to run inference on (0-indexed). |
 
 ### 2. Visual QA Tab (Alpamayo 1.5 only)
 
-1. Ensure Alpamayo 1.5 is loaded (from the Inference tab)
-2. Select a **Sample Index**
+1. Ensure Alpamayo 1.5 is loaded (from the Reasoning tab)
+2. Select a **Sample Index** (clamped to valid range automatically)
 3. Type your question
-4. Click **Ask**
+4. Click **Ask Question**
 
-### 3. Info Tab
+### 3. Reference Tab
 
-Displays model specifications and dataset information.
+Displays model comparison table and the full list of 14 supported datasets.
 
 ---
 
