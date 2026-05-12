@@ -245,6 +245,70 @@ table a { color: #58a6ff !important; }
 }
 .footer-container a { color: #76b900 !important; text-decoration: none; }
 .footer-container a:hover { text-decoration: underline; }
+
+/* ── Kill all inline code / highlighted text backgrounds ── */
+.gradio-container code,
+.gradio-container pre code,
+.gradio-container .prose code,
+.gradio-container .markdown code,
+.gradio-container .coc-panel code,
+.gradio-container mark,
+.gradio-container .prose mark {
+    background: rgba(118,185,0,0.12) !important;
+    background-color: rgba(118,185,0,0.12) !important;
+    color: #c8e6a0 !important;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: none !important;
+}
+/* Remove any highlighted/marked text styling */
+.gradio-container .prose *::selection,
+.gradio-container .markdown *::selection {
+    background: rgba(118,185,0,0.3) !important;
+    color: #fff !important;
+}
+/* Table cells — no highlight backgrounds */
+.gradio-container table td,
+.gradio-container table td code,
+.gradio-container .prose table td code {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: var(--neutral-200) !important;
+}
+.gradio-container table td code {
+    background: rgba(118,185,0,0.1) !important;
+    color: #c8e6a0 !important;
+}
+
+/* ── Radio button — fix white box on unselected option ──── */
+.gradio-container [role="radiogroup"] label,
+.gradio-container [role="radiogroup"] > div,
+.gradio-container [role="radiogroup"] > div > label,
+.gradio-container .gr-radio label,
+.gradio-container .gr-radio > div,
+.gradio-container input[type="radio"] + span,
+.gradio-container input[type="radio"] ~ div,
+.gradio-container [data-testid="radio"] > div,
+.gradio-container [data-testid="radio"] label {
+    background: var(--neutral-800) !important;
+    background-color: var(--neutral-800) !important;
+    border-color: var(--neutral-600) !important;
+    color: var(--neutral-200) !important;
+}
+/* Unselected radio circle — dark */
+.gradio-container input[type="radio"] {
+    accent-color: #76b900 !important;
+    background: var(--neutral-800) !important;
+    border-color: var(--neutral-500) !important;
+}
+/* Any remaining white/light containers in radio groups */
+.gradio-container .gr-radio .wrap,
+.gradio-container .gr-radio .wrap > *,
+.gradio-container [role="radiogroup"] .wrap,
+.gradio-container [role="radiogroup"] > * {
+    background: var(--neutral-800) !important;
+    background-color: var(--neutral-800) !important;
+}
 """
 
 # ── Global state ──────────────────────────────────────────────────────────────
