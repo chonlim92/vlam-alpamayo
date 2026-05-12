@@ -285,14 +285,15 @@ def run_reasoning_action(
     else:
         text_out = _format_data_preview(data_sample)
 
-    # ── Render video from visual data (independent of model) ─────────
+    # ── Render video from visual data (only if sample has images) ──────
     video_path = None
-    try:
-        video_path = render_result_video(
-            data_sample, result or {}, output_dir=config.output_dir,
-        )
-    except Exception as e:
-        print(f"Video render error: {e}")
+    if _sample_has_visual_data(data_sample):
+        try:
+            video_path = render_result_video(
+                data_sample, result or {}, output_dir=config.output_dir,
+            )
+        except Exception as e:
+            print(f"Video render error: {e}")
 
     # ── Render trajectory (only if model produced one) ───────────────
     traj_img = None
@@ -303,6 +304,24 @@ def run_reasoning_action(
             print(f"Trajectory render error: {e}")
 
     return (text_out, video_path, traj_img)
+
+
+def _sample_has_visual_data(sample: dict) -> bool:
+    """Check if a data sample contains any image or video content."""
+    # Normalized streaming samples with PIL images
+    if sample.get("images"):
+        return True
+    # SDK samples with camera frames
+    visual_keys = {"camera_front_wide_120fov", "images", "image", "video",
+                    "frames", "frame", "png"}
+    for key in visual_keys:
+        if key in sample and sample[key] is not None:
+            return True
+    # Check for any key containing "camera" or "image" with non-None value
+    for key, val in sample.items():
+        if val is not None and any(k in key.lower() for k in ("camera", "image")):
+            return True
+    return False
 
 
 def _format_data_preview(sample: dict) -> str:
