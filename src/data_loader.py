@@ -39,6 +39,7 @@ DATASETS = {
     # ── Public driving datasets (used in Alpamayo 1.5 training) ───────────
     "coda-lm": {
         "hf_id": "KaiChen1998/coda-lm-llava-format",
+        "hf_config": "English",
         "loader": "hf_streaming",
         "description": "Corner case analysis with multi-turn conversations on driving images.",
         "size": "~1 GB",
@@ -226,7 +227,7 @@ def load_sample_data(
             ds_info["hf_id"], parquet_path, num_samples,
         )
     # hf_streaming — normalize samples after loading
-    raw_samples = _load_hf_streaming(ds_info["hf_id"], num_samples)
+    raw_samples = _load_hf_streaming(ds_info["hf_id"], num_samples, config=ds_info.get("hf_config"))
     return [_normalize_sample(s, ds_info) for s in raw_samples]
 
 
@@ -1216,13 +1217,19 @@ def _load_hf_parquet(repo_id: str, parquet_path: str | None, num_samples: int) -
     return [row.to_dict() for _, row in rows.iterrows()]
 
 
-def _load_hf_streaming(repo_id: str, num_samples: int) -> list:
+def _load_hf_streaming(repo_id: str, num_samples: int, config: str | None = None) -> list:
     """Load from any HF dataset using streaming mode (no full download)."""
     try:
-        ds = load_dataset(repo_id, split="train", streaming=True, trust_remote_code=True)
+        kwargs = {"streaming": True, "trust_remote_code": True}
+        if config:
+            kwargs["name"] = config
+        ds = load_dataset(repo_id, split="train", **kwargs)
     except Exception:
         # Some datasets only have a "test" or default split
-        ds = load_dataset(repo_id, streaming=True, trust_remote_code=True)
+        kwargs = {"streaming": True, "trust_remote_code": True}
+        if config:
+            kwargs["name"] = config
+        ds = load_dataset(repo_id, **kwargs)
         # Take the first available split
         if hasattr(ds, "keys"):
             first_split = next(iter(ds.keys()))
