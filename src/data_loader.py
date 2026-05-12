@@ -412,29 +412,42 @@ def _load_physical_ai_av_sdk(config: AppConfig, num_samples: int) -> list:
     # Load reasoning parquet to find OOD clips with CoC annotations
     reasoning_df = _load_reasoning_index(ds)
 
-    # Pick clip IDs — prefer OOD-annotated clips, fall back to clip_index
-    clip_ids = _select_clip_ids(ds, reasoning_df, num_samples)
+    # Pick candidate clip IDs — request extra to account for clips without video
+    max_candidates = num_samples * 3
+    clip_ids = _select_clip_ids(ds, reasoning_df, max_candidates)
 
     camera_feature = "camera_front_wide_120fov"
     samples = []
+    skipped = 0
 
     for i, clip_id in enumerate(clip_ids):
+        if len(samples) >= num_samples:
+            break
+
         print(f"[{i + 1}/{len(clip_ids)}] Downloading clip {clip_id}...")
 
         sample = {"clip_id": clip_id, "source": "physical_ai_av_sdk"}
 
         # Download and extract camera frames
+        has_video = False
         try:
             ds.download_clip_features(clip_id, features=[camera_feature])
             video_reader = ds.get_clip_feature(clip_id, camera_feature)
             frames = _extract_video_frames(video_reader, max_frames=40)
             if frames:
                 sample["camera_front_wide_120fov"] = frames
+                has_video = True
                 print(f"  Camera: {len(frames)} frames extracted")
             else:
                 print("  Camera: no frames extracted (reader returned empty)")
         except Exception as e:
             print(f"  Camera download failed: {e}")
+
+        # Skip clips without video data
+        if not has_video:
+            skipped += 1
+            print(f"  ⏭️  Skipping clip (no video) — {skipped} skipped so far")
+            continue
 
         # Download egomotion
         try:
@@ -455,7 +468,13 @@ def _load_physical_ai_av_sdk(config: AppConfig, num_samples: int) -> list:
         samples.append(sample)
 
     if not samples:
-        raise RuntimeError("No clips could be loaded. Check dataset access and network.")
+        raise RuntimeError(
+            f"No clips with video data could be loaded (tried {len(clip_ids)}, "
+            f"skipped {skipped}). Check dataset access and network."
+        )
+
+    if skipped:
+        print(f"✅ Loaded {len(samples)} clip(s) with video ({skipped} without video skipped)")
 
     return samples
 
@@ -481,18 +500,115 @@ def _load_reasoning_index(ds) -> pd.DataFrame | None:
 
 
 def _select_clip_ids(ds, reasoning_df: pd.DataFrame | None, num_samples: int) -> list:
-    """Select clip IDs to download — prefer OOD-annotated clips."""
-    if reasoning_df is not None and len(reasoning_df) > 0:
-        # Use clips that have OOD reasoning annotations
-        ids = reasoning_df.index[:num_samples].tolist()
-        if ids:
-            print(f"Selected {len(ids)} OOD-annotated clip(s)")
-            return ids
+    """Select clip IDs to download — only clips that have camera data."""
+    camera_feature = "camera_front_wide_120fov"
+    clip_idx = ds.clip_index
 
-    # Fall back to first N clips from the dataset clip index
-    ids = ds.clip_index.index[:num_samples].tolist()
-    print(f"Selected {len(ids)} clip(s) from clip index")
+    # Log clip_index columns to help debug feature availability
+    print(f"  Clip index: {len(clip_idx)} clips, columns: {list(clip_idx.columns)}")
+
+    # Filter clip_index for clips with camera data
+    camera_clips = _filter_clips_with_feature(clip_idx, camera_feature)
+
+    if reasoning_df is not None and len(reasoning_df) > 0:
+        # Intersect OOD-annotated clips with camera-available clips
+        annotated_ids = set(reasoning_df.index)
+        if camera_clips is not None:
+            camera_ids = set(camera_clips.index)
+            both = list(annotated_ids & camera_ids)
+            if both:
+                ids = both[:num_samples]
+                print(f"Selected {len(ids)} OOD-annotated clip(s) with camera data "
+                      f"(from {len(both)} candidates)")
+                return ids
+            # No overlap — try camera-only clips
+            print(f"  No OOD-annotated clips have camera data. "
+                  f"Using camera-available clips instead.")
+            ids = camera_clips.index[:num_samples].tolist()
+            if ids:
+                print(f"Selected {len(ids)} camera-available clip(s)")
+                return ids
+        else:
+            # Can't filter by camera — use annotated clips and hope for the best
+            ids = reasoning_df.index[:num_samples].tolist()
+            if ids:
+                print(f"Selected {len(ids)} OOD-annotated clip(s) (camera availability unknown)")
+                return ids
+
+    # No reasoning annotations — use camera-filtered clips if possible
+    if camera_clips is not None and len(camera_clips) > 0:
+        ids = camera_clips.index[:num_samples].tolist()
+        print(f"Selected {len(ids)} camera-available clip(s) from clip index")
+        return ids
+
+    # Final fallback — unfiltered clip index
+    ids = clip_idx.index[:num_samples].tolist()
+    print(f"Selected {len(ids)} clip(s) from clip index (camera availability unknown)")
     return ids
+
+
+def _filter_clips_with_feature(clip_idx, feature_name: str):
+    """Filter clip_index DataFrame for clips that have a specific feature.
+
+    The clip_index may have:
+    - A column named after the feature (boolean or presence marker)
+    - A 'features' column listing available features per clip
+    - Feature columns prefixed with 'has_' or suffixed with '_available'
+    Returns filtered DataFrame, or None if we can't determine availability.
+    """
+    cols = list(clip_idx.columns)
+    col_lower = {c.lower(): c for c in cols}
+
+    # Direct column match (e.g. "camera_front_wide_120fov")
+    if feature_name in cols:
+        col = feature_name
+        try:
+            # Boolean column or non-null check
+            if clip_idx[col].dtype == bool:
+                return clip_idx[clip_idx[col]]
+            return clip_idx[clip_idx[col].notna()]
+        except Exception:
+            pass
+
+    # has_<feature> or <feature>_available
+    for prefix_suffix in (f"has_{feature_name}", f"{feature_name}_available"):
+        if prefix_suffix.lower() in col_lower:
+            col = col_lower[prefix_suffix.lower()]
+            try:
+                return clip_idx[clip_idx[col].astype(bool)]
+            except Exception:
+                pass
+
+    # 'features' list column — check if feature_name appears in each row's list
+    if "features" in col_lower:
+        col = col_lower["features"]
+        try:
+            mask = clip_idx[col].apply(
+                lambda x: feature_name in x if isinstance(x, (list, set, tuple)) else False
+            )
+            filtered = clip_idx[mask]
+            if len(filtered) > 0:
+                return filtered
+        except Exception:
+            pass
+
+    # Check for any column containing "camera" and "front"
+    for c in cols:
+        cl = c.lower()
+        if "camera" in cl and "front" in cl:
+            try:
+                if clip_idx[c].dtype == bool:
+                    filtered = clip_idx[clip_idx[c]]
+                else:
+                    filtered = clip_idx[clip_idx[c].notna()]
+                if len(filtered) > 0:
+                    print(f"  Filtered by column '{c}': {len(filtered)} clips with camera data")
+                    return filtered
+            except Exception:
+                continue
+
+    print(f"  Could not determine camera availability from clip_index columns: {cols}")
+    return None
 
 
 def _extract_video_frames(video_reader, max_frames: int = 40) -> list[np.ndarray]:
