@@ -41,9 +41,13 @@ class InferenceEngine:
         if self._is_parquet_row(data_sample):
             return self._format_parquet_result(data_sample)
 
-        # ── Normalized HF streaming sample (has 'source' == 'hf_streaming') ──
+        # ── Normalized HF streaming sample ───────────────────────────
         if data_sample.get("source") == "hf_streaming":
             return self._format_streaming_result(data_sample)
+
+        # ── SDK sample with camera data ──────────────────────────────
+        if data_sample.get("source") == "physical_ai_av_sdk":
+            return self._format_sdk_result(data_sample)
 
         # ── Full model inference ─────────────────────────────────────
         if self.model is None:
@@ -69,6 +73,9 @@ class InferenceEngine:
     def _is_parquet_row(sample) -> bool:
         """Check if the sample is a parquet metadata row (no camera data)."""
         if not isinstance(sample, dict):
+            return False
+        # Samples tagged with a source are handled by their own formatters
+        if sample.get("source") in ("physical_ai_av_sdk", "hf_streaming"):
             return False
         keys = set(sample.keys())
         # ood_reasoning.parquet has: feature, event_cluster, events, split
@@ -195,6 +202,83 @@ class InferenceEngine:
             "timestamp": datetime.now().isoformat(),
             "source": "hf_streaming",
             "has_images": bool(images),
+        }
+
+    def _format_sdk_result(self, sample: dict) -> dict:
+        """Format a PhysicalAI-AV SDK sample.
+
+        Shows camera frames as video + CoC reasoning from parquet annotations.
+        Optionally runs model inference if loaded.
+        """
+        clip_id = sample.get("clip_id", "unknown")
+        has_camera = "camera_front_wide_120fov" in sample
+        has_ego = "egomotion" in sample
+
+        # Try model inference if model is loaded and camera data is present
+        trajectory = None
+        model_reasoning = ""
+        if self.model is not None and has_camera:
+            try:
+                print(f"Running model inference on clip {clip_id}...")
+                model_result = self.model.sample_trajectories_from_data_with_vlm_rollout(
+                    sample,
+                    num_traj_samples=self.config.num_traj_samples,
+                )
+                model_reasoning = model_result.get("reasoning", "")
+                trajectory = self._format_trajectory(model_result.get("trajectory"))
+            except Exception as e:
+                model_reasoning = f"(model inference failed: {e})"
+                print(f"  Model inference error: {e}")
+
+        # Build reasoning text — combine model output + parquet CoC annotations
+        lines = [
+            f"Clip ID:         {clip_id}",
+            f"Camera frames:   {len(sample['camera_front_wide_120fov'])} frames" if has_camera else "Camera:          not available",
+            f"Egomotion:       {'loaded' if has_ego else 'not available'}",
+        ]
+
+        # Model reasoning (if ran)
+        if model_reasoning:
+            lines.extend([
+                "",
+                "━━━  Model Reasoning  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "",
+                model_reasoning,
+            ])
+
+        # Pre-annotated CoC reasoning from parquet
+        events = sample.get("events", [])
+        if events:
+            coc_parts = []
+            if isinstance(events, (list, tuple)):
+                for i, evt in enumerate(events, 1):
+                    if isinstance(evt, dict):
+                        coc = evt.get("coc", "")
+                        frame = evt.get("event_start_frame", "?")
+                        ts = evt.get("event_start_timestamp", "?")
+                        coc_parts.append(f"Event {i}  (frame {frame}, timestamp {ts})\n{coc}")
+                    elif isinstance(evt, str):
+                        coc_parts.append(f"Event {i}\n{evt}")
+
+            if coc_parts:
+                cluster = sample.get("event_cluster", "")
+                lines.extend([
+                    "",
+                    "━━━  Chain-of-Causation (annotated)  ━━━━━━━━━━━━━━━━━━━━",
+                    "",
+                ])
+                if cluster:
+                    lines.append(f"Event Cluster:   {cluster}")
+                    lines.append("")
+                lines.append("\n\n".join(coc_parts))
+
+        return {
+            "model": MODEL_INFO[self.model_key]["name"],
+            "reasoning_trace": "\n".join(lines),
+            "trajectory": trajectory,
+            "timestamp": datetime.now().isoformat(),
+            "source": "physical_ai_av_sdk",
+            "has_camera": has_camera,
         }
 
     def run_vqa(self, data_sample, question: str) -> dict:

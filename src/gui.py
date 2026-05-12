@@ -253,11 +253,14 @@ def load_data_action(dataset_key: str, num_samples: int) -> str:
 def run_reasoning_action(
     sample_idx: int, num_traj_samples: int,
 ) -> tuple[str, str | None, object | None]:
-    """Run reasoning inference — returns (text, video_path, trajectory_image)."""
+    """Run reasoning inference — returns (text, video_path, trajectory_image).
+
+    Video is rendered from the data sample's visual content independently
+    of whether model inference succeeds.  A model is NOT required for
+    displaying dataset images/video.
+    """
     global _engine, _data_samples
 
-    if _engine is None:
-        return ("⚠️  No model loaded — use the Setup panel to load a model first.", None, None)
     if not _data_samples:
         return ("⚠️  No data loaded — use the Setup panel to load dataset samples first.", None, None)
 
@@ -265,39 +268,82 @@ def run_reasoning_action(
     if idx < 0 or idx >= len(_data_samples):
         return (f"⚠️  Sample index out of range. Available: 0–{len(_data_samples) - 1}", None, None)
 
+    data_sample = _data_samples[idx]
+    config = _get_config()
+
+    # ── Run inference (if engine loaded) ──────────────────────────────
+    result = None
+    text_out = ""
+    if _engine is not None:
+        try:
+            _engine.config.num_traj_samples = int(num_traj_samples)
+            result = _engine.run_reasoning(data_sample)
+            _engine.save_result(result)
+            text_out = _format_reasoning_result(result)
+        except Exception as e:
+            text_out = f"⚠️  Inference error: {e}"
+    else:
+        text_out = _format_data_preview(data_sample)
+
+    # ── Render video from visual data (independent of model) ─────────
+    video_path = None
     try:
-        _engine.config.num_traj_samples = int(num_traj_samples)
-        result = _engine.run_reasoning(_data_samples[idx])
-        _engine.save_result(result)
-
-        text_out = _format_reasoning_result(result)
-
-        # Render video/images for any source that has visual data
-        video_path = None
-        traj_img = None
-        source = result.get("source", "")
-
-        if source == "parquet_annotation":
-            # Pure text — no visuals
-            pass
-        elif source == "hf_streaming":
-            # Streaming datasets — render images as a video if available
-            if result.get("has_images"):
-                config = _get_config()
-                video_path = render_result_video(
-                    _data_samples[idx], result, output_dir=config.output_dir,
-                )
-        else:
-            # SDK / model inference — full video + trajectory
-            config = _get_config()
-            video_path = render_result_video(
-                _data_samples[idx], result, output_dir=config.output_dir,
-            )
-            traj_img = render_trajectory_plot(result.get("trajectory"))
-
-        return (text_out, video_path, traj_img)
+        video_path = render_result_video(
+            data_sample, result or {}, output_dir=config.output_dir,
+        )
     except Exception as e:
-        return (f"❌  Inference error: {e}", None, None)
+        print(f"Video render error: {e}")
+
+    # ── Render trajectory (only if model produced one) ───────────────
+    traj_img = None
+    if result and result.get("trajectory"):
+        try:
+            traj_img = render_trajectory_plot(result["trajectory"])
+        except Exception as e:
+            print(f"Trajectory render error: {e}")
+
+    return (text_out, video_path, traj_img)
+
+
+def _format_data_preview(sample: dict) -> str:
+    """Format a data sample preview when no model is loaded."""
+    source = sample.get("source", "unknown")
+    lines = ["ℹ️  No model loaded — showing data preview\n"]
+
+    if source == "physical_ai_av_sdk":
+        clip_id = sample.get("clip_id", "")
+        has_cam = "camera_front_wide_120fov" in sample
+        n_frames = len(sample["camera_front_wide_120fov"]) if has_cam and isinstance(sample.get("camera_front_wide_120fov"), list) else 0
+        lines.append(f"Clip ID:         {clip_id}")
+        lines.append(f"Camera frames:   {n_frames}")
+        lines.append(f"Egomotion:       {'loaded' if 'egomotion' in sample else 'N/A'}")
+
+        events = sample.get("events", [])
+        if isinstance(events, (list, tuple)):
+            for i, evt in enumerate(events, 1):
+                if isinstance(evt, dict):
+                    coc = evt.get("coc", "")
+                    frame = evt.get("event_start_frame", "?")
+                    lines.append(f"\nEvent {i}  (frame {frame})\n{coc}")
+
+    elif source == "hf_streaming":
+        q = sample.get("question", "")
+        a = sample.get("answer", "")
+        n_img = len(sample.get("images", []))
+        if n_img:
+            lines.append(f"Images: {n_img}")
+        if q:
+            lines.append(f"\nQuestion:\n{q}")
+        if a:
+            lines.append(f"\nAnswer:\n{a}")
+
+    else:
+        for k, v in sample.items():
+            val_str = str(v)[:150]
+            lines.append(f"{k}: {val_str}")
+
+    lines.append("\n💡 Load a model to run inference on this data.")
+    return "\n".join(lines)
 
 
 def _format_reasoning_result(result: dict) -> str:
