@@ -150,6 +150,72 @@ table a { color: #58a6ff !important; }
 /* ── Slider accent ───────────────────────────────────────── */
 .compact-slider input[type=range] { accent-color: #76b900 !important; }
 
+/* ── Dropdown & Radio — dark styling ─────────────────────── */
+.dark .gr-dropdown, .dark .gr-radio,
+.gradio-container .gr-dropdown, .gradio-container .gr-radio {
+    background: var(--neutral-800) !important;
+    border-color: var(--neutral-600) !important;
+}
+.dark select, .gradio-container select {
+    background: var(--neutral-800) !important;
+    color: var(--neutral-200) !important;
+    border-color: var(--neutral-600) !important;
+}
+/* Radio button items */
+.gradio-container .wrap input[type="radio"] + label,
+.gradio-container label.svelte-1qxm7ko,
+.gradio-container span.svelte-1qxm7ko {
+    background: var(--neutral-800) !important;
+    color: var(--neutral-200) !important;
+    border-color: var(--neutral-600) !important;
+}
+/* Radio selected state */
+.gradio-container input[type="radio"]:checked + label,
+.gradio-container .selected {
+    background: rgba(118,185,0,0.15) !important;
+    border-color: #76b900 !important;
+    color: #d4e8b0 !important;
+}
+/* Dropdown option list */
+.gradio-container ul[role="listbox"],
+.gradio-container .dropdown-options {
+    background: var(--neutral-800) !important;
+    border-color: var(--neutral-600) !important;
+}
+.gradio-container ul[role="listbox"] li {
+    color: var(--neutral-200) !important;
+}
+.gradio-container ul[role="listbox"] li:hover,
+.gradio-container ul[role="listbox"] li.selected {
+    background: rgba(118,185,0,0.15) !important;
+    color: #d4e8b0 !important;
+}
+/* All input labels */
+.gradio-container .gr-input-label,
+.gradio-container .label-wrap span,
+.gradio-container label span {
+    color: var(--neutral-300) !important;
+}
+/* Info text under inputs */
+.gradio-container .info-text,
+.gradio-container .gr-form > .wrap > span:last-child {
+    color: var(--neutral-400) !important;
+}
+
+/* ── CoC streaming panel ─────────────────────────────────── */
+.coc-panel {
+    background: var(--neutral-900) !important;
+    border: 1px solid var(--neutral-700) !important;
+    border-radius: 12px;
+    max-height: 450px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #76b900 var(--neutral-800);
+}
+.coc-panel::-webkit-scrollbar { width: 6px; }
+.coc-panel::-webkit-scrollbar-track { background: var(--neutral-800); }
+.coc-panel::-webkit-scrollbar-thumb { background: #76b900; border-radius: 3px; }
+
 /* ── Footer ──────────────────────────────────────────────── */
 .footer-container {
     text-align: center; padding: 20px 0 10px; font-size: 0.82em;
@@ -298,11 +364,17 @@ def run_reasoning_action(
         except Exception as e:
             print(f"Video render error: {e}")
 
-    # ── Render trajectory (only if model produced one) ───────────────
+    # ── Render trajectory (from model result or egomotion) ─────────
     traj_img = None
+    traj_data = None
     if result and result.get("trajectory"):
+        traj_data = result["trajectory"]
+    elif data_sample.get("trajectory") is not None:
+        traj_data = data_sample["trajectory"]
+
+    if traj_data is not None:
         try:
-            traj_img = render_trajectory_plot(result["trajectory"])
+            traj_img = render_trajectory_plot(traj_data)
         except Exception as e:
             print(f"Trajectory render error: {e}")
 
@@ -328,65 +400,78 @@ def _sample_has_visual_data(sample: dict) -> bool:
 
 
 def _format_data_preview(sample: dict) -> str:
-    """Format a data sample preview when no model is loaded."""
+    """Format a data sample preview as Markdown when no model is loaded."""
     source = sample.get("source", "unknown")
-    lines = ["ℹ️  No model loaded — showing data preview\n"]
+    lines = ["### Data Preview\n*No model loaded*\n"]
 
     if source == "physical_ai_av_sdk":
         clip_id = sample.get("clip_id", "")
         has_cam = "camera_front_wide_120fov" in sample
         n_frames = len(sample["camera_front_wide_120fov"]) if has_cam and isinstance(sample.get("camera_front_wide_120fov"), list) else 0
-        lines.append(f"Clip ID:         {clip_id}")
-        lines.append(f"Camera frames:   {n_frames}")
-        lines.append(f"Egomotion:       {'loaded' if 'egomotion' in sample else 'N/A'}")
+        has_traj = "trajectory" in sample or "ego_history_xyz" in sample
+
+        lines.append(f"| Property | Value |")
+        lines.append(f"|---|---|")
+        lines.append(f"| **Clip ID** | `{clip_id}` |")
+        lines.append(f"| **Camera** | {n_frames} frames |")
+        lines.append(f"| **Egomotion** | {'loaded' if 'egomotion' in sample else 'N/A'} |")
+        lines.append(f"| **Trajectory** | {'loaded' if has_traj else 'N/A'} |")
 
         events = sample.get("events", [])
-        if isinstance(events, (list, tuple)):
+        cluster = sample.get("event_cluster", "")
+        if isinstance(events, (list, tuple)) and events:
+            lines.append(f"\n---\n### Chain-of-Causation")
+            if cluster:
+                lines.append(f"**Event Cluster:** {cluster}\n")
             for i, evt in enumerate(events, 1):
                 if isinstance(evt, dict):
                     coc = evt.get("coc", "")
                     frame = evt.get("event_start_frame", "?")
-                    lines.append(f"\nEvent {i}  (frame {frame})\n{coc}")
+                    ts = evt.get("event_start_timestamp", "?")
+                    lines.append(f"#### Event {i} — Frame {frame}")
+                    lines.append(f"*Timestamp: {ts}*\n")
+                    lines.append(f"{coc}\n")
 
     elif source == "hf_streaming":
         q = sample.get("question", "")
         a = sample.get("answer", "")
         n_img = len(sample.get("images", []))
         if n_img:
-            lines.append(f"Images: {n_img}")
+            lines.append(f"**Images:** {n_img} frame(s)\n")
         if q:
-            lines.append(f"\nQuestion:\n{q}")
+            lines.append(f"### Question\n{q}\n")
         if a:
-            lines.append(f"\nAnswer:\n{a}")
+            lines.append(f"### Answer\n{a}\n")
 
     else:
         for k, v in sample.items():
             val_str = str(v)[:150]
-            lines.append(f"{k}: {val_str}")
+            lines.append(f"- **{k}:** {val_str}")
 
-    lines.append("\n💡 Load a model to run inference on this data.")
+    lines.append("\n> Load a model to run inference on this data.")
     return "\n".join(lines)
 
 
 def _format_reasoning_result(result: dict) -> str:
-    """Format inference result into a readable text block."""
+    """Format inference result into a Markdown block."""
     lines = [
-        f"Model          {result['model']}",
-        f"Timestamp      {result['timestamp']}",
-        "",
-        "━━━  Chain-of-Causation Reasoning  ━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "",
-        result.get("reasoning_trace", "(no reasoning trace generated)"),
+        f"### {result['model']}",
+        f"*{result['timestamp']}*\n",
+        "---",
+        "### Chain-of-Causation Reasoning\n",
+        result.get("reasoning_trace", "*(no reasoning trace generated)*"),
     ]
 
     if result.get("trajectory"):
         traj = result["trajectory"]
         lines.extend([
-            "",
-            "━━━  Trajectory Prediction  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "",
-            f"Waypoints      {traj.get('num_waypoints', 'N/A')}",
-            f"Horizon        {traj.get('horizon_seconds', 'N/A')}s @ {traj.get('frequency_hz', 'N/A')} Hz",
+            "\n---",
+            "### Trajectory Prediction\n",
+            f"| Property | Value |",
+            f"|---|---|",
+            f"| **Waypoints** | {traj.get('num_waypoints', 'N/A')} |",
+            f"| **Horizon** | {traj.get('horizon_seconds', 'N/A')}s |",
+            f"| **Frequency** | {traj.get('frequency_hz', 'N/A')} Hz |",
         ])
 
     return "\n".join(lines)
@@ -568,11 +653,10 @@ def build_gui() -> gr.Blocks:
                             elem_classes="run-btn",
                         )
 
-                        gr.HTML('<p class="section-title" style="margin-top:24px">Reasoning Trace</p>')
-                        result_output = gr.Textbox(
-                            label="Chain-of-Causation Output",
-                            interactive=False,
-                            lines=18,
+                        gr.HTML('<p class="section-title" style="margin-top:24px">Chain-of-Causation</p>')
+                        result_output = gr.Markdown(
+                            value="*No reasoning output yet — load data and click Run.*",
+                            elem_classes="coc-panel",
                         )
 
                     # ── Right: Visual Output ──────────────────────────

@@ -103,10 +103,10 @@ class InferenceEngine:
                     frame = evt.get("event_start_frame", "?")
                     ts = evt.get("event_start_timestamp", "?")
                     reasoning_parts.append(
-                        f"Event {i}  (frame {frame}, timestamp {ts})\n{coc}"
+                        f"#### Event {i} — Frame {frame}\n*Timestamp: {ts}*\n\n{coc}"
                     )
                 elif isinstance(evt, str):
-                    reasoning_parts.append(f"Event {i}\n{evt}")
+                    reasoning_parts.append(f"#### Event {i}\n{evt}")
         elif isinstance(events, str):
             # May be JSON string
             try:
@@ -117,25 +117,27 @@ class InferenceEngine:
                         coc = evt.get("coc", "") if isinstance(evt, dict) else str(evt)
                         frame = evt.get("event_start_frame", "?") if isinstance(evt, dict) else "?"
                         reasoning_parts.append(
-                            f"Event {i}  (frame {frame})\n{coc}"
+                            f"#### Event {i} — Frame {frame}\n{coc}"
                         )
             except (json.JSONDecodeError, TypeError):
                 reasoning_parts.append(events)
 
-        reasoning_text = "\n\n".join(reasoning_parts) if reasoning_parts else "(no events in this row)"
+        reasoning_text = "\n\n".join(reasoning_parts) if reasoning_parts else "*(no events in this row)*"
 
         feature = sample.get("feature", "unknown")
         cluster = sample.get("event_cluster", "unknown")
         split = sample.get("split", "unknown")
 
         lines = [
-            f"Feature:         {feature}",
-            f"Event Cluster:   {cluster}",
-            f"Split:           {split}",
-            f"Events:          {len(events) if isinstance(events, (list, tuple)) else '?'}",
+            f"| Property | Value |",
+            f"|---|---|",
+            f"| **Feature** | {feature} |",
+            f"| **Event Cluster** | {cluster} |",
+            f"| **Split** | {split} |",
+            f"| **Events** | {len(events) if isinstance(events, (list, tuple)) else '?'} |",
             "",
-            "━━━  Chain-of-Causation (pre-annotated)  ━━━━━━━━━━━━━━━━",
-            "",
+            "---",
+            "### Chain-of-Causation (pre-annotated)\n",
             reasoning_text,
         ]
 
@@ -160,23 +162,23 @@ class InferenceEngine:
 
         lines = []
         if images:
-            lines.append(f"Images:          {len(images)} frame(s)")
+            lines.append(f"**Images:** {len(images)} frame(s)")
         if metadata.get("id"):
-            lines.append(f"ID:              {metadata['id']}")
+            lines.append(f"**ID:** `{metadata['id']}`")
 
         # Show QA content
         if question:
             lines.extend([
                 "",
-                "━━━  Question  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                "",
+                "---",
+                "### Question\n",
                 question,
             ])
         if answer:
             lines.extend([
                 "",
-                "━━━  Ground-Truth Answer  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                "",
+                "---",
+                "### Ground-Truth Answer\n",
                 answer,
             ])
 
@@ -186,14 +188,14 @@ class InferenceEngine:
         if meta_items:
             lines.extend([
                 "",
-                "━━━  Metadata  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                "",
+                "---",
+                "### Metadata\n",
             ])
             for k, v in meta_items.items():
                 val_str = str(v)
                 if len(val_str) > 200:
                     val_str = val_str[:200] + "…"
-                lines.append(f"{k}: {val_str}")
+                lines.append(f"- **{k}:** {val_str}")
 
         return {
             "model": f"{MODEL_INFO[self.model_key]['name']} (dataset sample)",
@@ -231,18 +233,23 @@ class InferenceEngine:
                 print(f"  Model inference error: {e}")
 
         # Build reasoning text — combine model output + parquet CoC annotations
+        n_frames = len(sample['camera_front_wide_120fov']) if has_camera else 0
+        has_traj = "trajectory" in sample or "ego_history_xyz" in sample
         lines = [
-            f"Clip ID:         {clip_id}",
-            f"Camera frames:   {len(sample['camera_front_wide_120fov'])} frames" if has_camera else "Camera:          not available",
-            f"Egomotion:       {'loaded' if has_ego else 'not available'}",
+            f"| Property | Value |",
+            f"|---|---|",
+            f"| **Clip ID** | `{clip_id}` |",
+            f"| **Camera** | {n_frames} frames |" if has_camera else "| **Camera** | not available |",
+            f"| **Egomotion** | {'loaded' if has_ego else 'not available'} |",
+            f"| **Trajectory** | {'loaded' if has_traj else 'not available'} |",
         ]
 
         # Model reasoning (if ran)
         if model_reasoning:
             lines.extend([
                 "",
-                "━━━  Model Reasoning  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                "",
+                "---",
+                "### Model Reasoning\n",
                 model_reasoning,
             ])
 
@@ -256,20 +263,21 @@ class InferenceEngine:
                         coc = evt.get("coc", "")
                         frame = evt.get("event_start_frame", "?")
                         ts = evt.get("event_start_timestamp", "?")
-                        coc_parts.append(f"Event {i}  (frame {frame}, timestamp {ts})\n{coc}")
+                        coc_parts.append(
+                            f"#### Event {i} — Frame {frame}\n*Timestamp: {ts}*\n\n{coc}"
+                        )
                     elif isinstance(evt, str):
-                        coc_parts.append(f"Event {i}\n{evt}")
+                        coc_parts.append(f"#### Event {i}\n{evt}")
 
             if coc_parts:
                 cluster = sample.get("event_cluster", "")
                 lines.extend([
                     "",
-                    "━━━  Chain-of-Causation (annotated)  ━━━━━━━━━━━━━━━━━━━━",
-                    "",
+                    "---",
+                    "### Chain-of-Causation (annotated)\n",
                 ])
                 if cluster:
-                    lines.append(f"Event Cluster:   {cluster}")
-                    lines.append("")
+                    lines.append(f"**Event Cluster:** {cluster}\n")
                 lines.append("\n\n".join(coc_parts))
 
         return {

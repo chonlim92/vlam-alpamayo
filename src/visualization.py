@@ -8,10 +8,10 @@ import cv2
 import numpy as np
 
 
-# ── Colour palette ────────────────────────────────────────────────────────────
-_TRAJ_COLOR = (0, 255, 128)       # green – predicted trajectory
-_TRAJ_ALT_COLOR = (255, 200, 50)  # cyan  – alternative trajectory samples
-_EGO_COLOR = (255, 100, 0)        # blue  – ego marker
+# ── Colour palette (RGB) ─────────────────────────────────────────────────────
+_TRAJ_COLOR = (0, 220, 100)       # green – predicted trajectory
+_TRAJ_ALT_COLOR = (50, 200, 255)  # cyan  – alternative trajectory samples
+_EGO_COLOR = (0, 100, 255)        # blue  – ego marker
 _TEXT_BG = (30, 30, 30)
 _TEXT_FG = (255, 255, 255)
 
@@ -20,20 +20,23 @@ def render_result_video(
     data_sample: dict,
     result: dict,
     output_dir: str = "output",
-    fps: int = 10,
+    fps: int = 5,
 ) -> str:
     """Render an annotated MP4 video from a data sample and inference result.
 
     Composites the front-camera frames with an overlay showing:
-    - The Chain-of-Causation reasoning text (scrolling)
+    - The Chain-of-Causation reasoning text (scrolling, large font)
     - The predicted trajectory drawn on a BEV mini-map
+    - Trajectory drawn on the camera view (projected from BEV)
     - A timeline bar
+
+    Frames are expected in RGB order. Output video is H.264 (browser-compatible).
 
     Args:
         data_sample: Raw data sample (must contain camera images).
         result: Inference result dict from InferenceEngine.
         output_dir: Directory to write the video file.
-        fps: Frames per second of the output video.
+        fps: Frames per second of the output video (default 5 for readability).
 
     Returns:
         Absolute path to the generated .mp4 file.
@@ -49,28 +52,46 @@ def render_result_video(
         # No camera data – generate a static summary frame as a short clip
         frames = [_make_placeholder_frame()]
 
+    # Upscale small frames for readability
+    min_w = 1280
+    if frames[0].shape[1] < min_w:
+        scale = min_w / frames[0].shape[1]
+        frames = [cv2.resize(f, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4) for f in frames]
+
     h, w = frames[0].shape[:2]
     reasoning_text = result.get("reasoning_trace", "")
-    trajectory = result.get("trajectory")
     model_name = result.get("model", "Alpamayo")
+
+    # Get trajectory from result or data sample
+    trajectory_waypoints = None
+    if result.get("trajectory") and "waypoints" in result["trajectory"]:
+        trajectory_waypoints = np.array(result["trajectory"]["waypoints"])
+    elif data_sample.get("trajectory") is not None:
+        trajectory_waypoints = np.array(data_sample["trajectory"])
 
     # Build annotated frames
     annotated = []
     total = len(frames)
-    reasoning_lines = _wrap_text(reasoning_text, max_chars=70)
+    reasoning_lines = _wrap_text(reasoning_text, max_chars=80)
     # Scroll reasoning text across frames
     lines_per_frame = max(1, len(reasoning_lines) // max(total, 1))
 
     for idx, frame in enumerate(frames):
+        # Work in RGB
         canvas = frame.copy()
 
         # ── BEV trajectory mini-map (top-right) ──────────────────────────
-        if trajectory and "waypoints" in trajectory:
-            _draw_bev_minimap(canvas, trajectory["waypoints"], idx, total)
+        if trajectory_waypoints is not None:
+            wps = trajectory_waypoints
+            if wps.ndim == 3:
+                wps = wps[0]
+            _draw_bev_minimap(canvas, wps, idx, total)
+            # Also draw trajectory on the camera view (simple BEV→image projection)
+            _draw_trajectory_on_camera(canvas, wps, idx, total)
 
         # ── Reasoning text overlay (bottom) ──────────────────────────────
-        visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 5, 0))
-        visible_lines = reasoning_lines[visible_start:visible_start + 5]
+        visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 6, 0))
+        visible_lines = reasoning_lines[visible_start:visible_start + 6]
         _draw_text_overlay(canvas, visible_lines, model_name)
 
         # ── Timeline bar (very bottom) ───────────────────────────────────
@@ -78,29 +99,36 @@ def render_result_video(
 
         annotated.append(canvas)
 
-    # ── Write video ──────────────────────────────────────────────────────
+    # ── Write video (frames are RGB) ────────────────────────────────────
     video_path = _write_browser_compatible_video(annotated, video_path, fps, w, h)
 
     return str(video_path)
 
 
-def render_trajectory_plot(trajectory: dict | None) -> np.ndarray | None:
+def render_trajectory_plot(trajectory: dict | np.ndarray | None) -> np.ndarray | None:
     """Render a standalone BEV trajectory plot as an image (numpy array).
 
     Args:
-        trajectory: Trajectory dict with 'waypoints' key.
+        trajectory: Trajectory dict with 'waypoints' key, or raw (N,2) array.
 
     Returns:
         RGB numpy array (plot image) or None.
     """
-    if not trajectory or "waypoints" not in trajectory:
+    if trajectory is None:
         return None
 
-    size = 480
+    # Accept raw numpy array
+    if isinstance(trajectory, np.ndarray):
+        waypoints = trajectory
+    elif isinstance(trajectory, dict) and "waypoints" in trajectory:
+        waypoints = np.array(trajectory["waypoints"])
+    else:
+        return None
+
+    size = 600
     img = np.zeros((size, size, 3), dtype=np.uint8)
     img[:] = (40, 40, 40)
 
-    waypoints = np.array(trajectory["waypoints"])
     if waypoints.ndim == 3:
         # Multiple trajectory samples – draw all
         for s in range(waypoints.shape[0]):
@@ -108,23 +136,32 @@ def render_trajectory_plot(trajectory: dict | None) -> np.ndarray | None:
         _draw_traj_on_bev(img, waypoints[0], size, color=_TRAJ_COLOR, thickness=2)
     elif waypoints.ndim == 2:
         _draw_traj_on_bev(img, waypoints, size, color=_TRAJ_COLOR, thickness=2)
+    else:
+        return None
 
     # Draw ego vehicle marker at center
     cx, cy = size // 2, int(size * 0.75)
-    cv2.circle(img, (cx, cy), 8, _EGO_COLOR, -1)
-    cv2.putText(img, "EGO", (cx - 15, cy + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.4, _TEXT_FG, 1)
+    cv2.circle(img, (cx, cy), 10, _EGO_COLOR, -1)
+    cv2.putText(img, "EGO", (cx - 18, cy + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _TEXT_FG, 1)
 
     # Axis labels
-    cv2.putText(img, "BEV Trajectory", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, _TEXT_FG, 1)
-    horizon = trajectory.get("horizon_seconds", 6.4)
-    freq = trajectory.get("frequency_hz", 10)
-    n_wp = trajectory.get("num_waypoints", "?")
+    cv2.putText(img, "BEV Trajectory", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, _TEXT_FG, 2)
+
+    if isinstance(trajectory, dict):
+        horizon = trajectory.get("horizon_seconds", "?")
+        freq = trajectory.get("frequency_hz", "?")
+        n_wp = trajectory.get("num_waypoints", waypoints.shape[0] if waypoints.ndim == 2 else "?")
+    else:
+        n_wp = waypoints.shape[0]
+        horizon = "?"
+        freq = "?"
+
     cv2.putText(
         img, f"{n_wp} pts | {horizon}s @ {freq}Hz",
-        (10, size - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1,
+        (10, size - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1,
     )
 
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    return img
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -165,23 +202,20 @@ def _extract_frames(data_sample: dict) -> list[np.ndarray]:
 
 
 def _convert_to_frames(raw) -> list[np.ndarray]:
-    """Convert various data types to a list of BGR numpy frames."""
+    """Convert various data types to a list of RGB numpy frames."""
     frames = []
 
-    # PIL Image
+    # PIL Image — already RGB
     try:
         from PIL import Image
         if isinstance(raw, Image.Image):
-            arr = np.array(raw)
-            if arr.ndim == 3 and arr.shape[2] == 3:
-                frames.append(cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
-            elif arr.ndim == 2:
-                frames.append(cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR))
+            arr = np.array(raw.convert('RGB'))
+            frames.append(arr)
             return frames
     except ImportError:
         pass
 
-    # numpy array – single frame or batch
+    # numpy array – single frame or batch (assume RGB)
     if isinstance(raw, np.ndarray):
         if raw.ndim == 3:
             if raw.shape[2] == 3:
@@ -236,10 +270,10 @@ def _make_placeholder_frame(w: int = 960, h: int = 540) -> np.ndarray:
 
 def _draw_bev_minimap(
     canvas: np.ndarray,
-    waypoints,
+    waypoints: np.ndarray,
     frame_idx: int,
     total_frames: int,
-    map_size: int = 180,
+    map_size: int = 220,
 ) -> None:
     """Draw a BEV trajectory mini-map in the top-right corner."""
     h, w = canvas.shape[:2]
@@ -252,9 +286,7 @@ def _draw_bev_minimap(
     cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
     cv2.rectangle(canvas, (x0, y0), (x0 + map_size, y0 + map_size), (80, 80, 80), 1)
 
-    wps = np.array(waypoints)
-    if wps.ndim == 3:
-        wps = wps[0]  # first sample
+    wps = waypoints
     if wps.ndim != 2 or wps.shape[0] == 0:
         return
 
@@ -339,38 +371,104 @@ def _draw_traj_on_bev(
         cv2.line(img, tuple(pts[i]), tuple(pts[i + 1]), color, thickness)
 
 
+def _draw_trajectory_on_camera(
+    canvas: np.ndarray,
+    wps: np.ndarray,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    """Draw ego trajectory projected onto the camera view.
+
+    Simple BEV→camera projection: maps ego x,y to a perspective-like
+    projection on the lower half of the frame. Forward (y+) goes up.
+    """
+    h, w = canvas.shape[:2]
+    if wps.ndim != 2 or wps.shape[0] < 2:
+        return
+
+    xs = wps[:, 0]
+    ys = wps[:, 1] if wps.shape[1] > 1 else np.zeros_like(xs)
+
+    # Normalize: center x, normalize y to 0..1 range
+    x_range = max(abs(xs.max() - xs.min()), 1.0)
+    y_range = max(ys.max() - ys.min(), 1.0)
+
+    # Project: near bottom of frame (y=0) to vanishing point area (y_max)
+    cx = w // 2
+    vanish_y = int(h * 0.35)  # vanishing point height
+    bottom_y = int(h * 0.92)  # bottom of road
+
+    pts = []
+    for i in range(len(xs)):
+        # Depth factor: 0 (near) to 1 (far)
+        depth = (ys[i] - ys[0]) / y_range if y_range > 0 else 0
+        depth = max(0, min(1, depth))
+
+        # Y on screen: near=bottom_y, far=vanish_y
+        py = int(bottom_y - depth * (bottom_y - vanish_y))
+        # X on screen: perspective narrowing with depth
+        perspective = 1.0 - 0.7 * depth
+        lateral = (xs[i] - xs.mean()) / x_range * 2
+        px = int(cx + lateral * (w * 0.3) * perspective)
+
+        pts.append((px, py))
+
+    # Draw trajectory line
+    for i in range(len(pts) - 1):
+        progress = i / max(len(pts) - 1, 1)
+        # Green fading to transparent
+        alpha = max(0.3, 1.0 - progress * 0.7)
+        color = (
+            int(0 * alpha),
+            int(220 * alpha),
+            int(100 * alpha),
+        )
+        thickness = max(1, int(4 * (1.0 - 0.5 * progress)))
+        cv2.line(canvas, pts[i], pts[i + 1], color, thickness)
+
+    # Current position marker
+    if total_frames > 1:
+        traj_idx = min(int(frame_idx / total_frames * len(pts)), len(pts) - 1)
+        cv2.circle(canvas, pts[traj_idx], 6, (255, 80, 0), -1)
+        cv2.circle(canvas, pts[traj_idx], 8, (255, 255, 255), 2)
+
+
 def _draw_text_overlay(canvas: np.ndarray, lines: list[str], model_name: str) -> None:
     """Draw a semi-transparent text overlay at the bottom of the frame."""
     h, w = canvas.shape[:2]
-    line_h = 22
-    panel_h = (len(lines) + 2) * line_h + 10
+    font_scale = max(0.55, min(0.8, w / 1600))
+    line_h = int(28 * font_scale / 0.55)
+    panel_h = (len(lines) + 2) * line_h + 15
     y_start = h - panel_h
 
     # Semi-transparent panel
     overlay = canvas.copy()
     cv2.rectangle(overlay, (0, y_start), (w, h), _TEXT_BG, -1)
-    cv2.addWeighted(overlay, 0.7, canvas, 0.3, 0, canvas)
+    cv2.addWeighted(overlay, 0.75, canvas, 0.25, 0, canvas)
 
     # Model name header
     cv2.putText(
         canvas, f"[{model_name}] Chain-of-Causation Reasoning",
-        (12, y_start + line_h),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 200, 255), 1,
+        (16, y_start + line_h),
+        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.9, (100, 200, 255), 1, cv2.LINE_AA,
     )
 
-    # Reasoning text
+    # Reasoning text — larger, anti-aliased
     for i, line in enumerate(lines):
         y = y_start + (i + 2) * line_h + 5
-        cv2.putText(canvas, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, _TEXT_FG, 1)
+        cv2.putText(
+            canvas, line, (16, y),
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale, _TEXT_FG, 1, cv2.LINE_AA,
+        )
 
 
 def _draw_timeline(canvas: np.ndarray, idx: int, total: int) -> None:
     """Draw a thin progress bar at the very bottom."""
     h, w = canvas.shape[:2]
-    bar_h = 4
+    bar_h = 6
     progress = (idx + 1) / max(total, 1)
     cv2.rectangle(canvas, (0, h - bar_h), (w, h), (60, 60, 60), -1)
-    cv2.rectangle(canvas, (0, h - bar_h), (int(w * progress), h), (0, 200, 255), -1)
+    cv2.rectangle(canvas, (0, h - bar_h), (int(w * progress), h), (118, 185, 0), -1)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:
@@ -436,7 +534,7 @@ def _write_browser_compatible_video(
     w: int,
     h: int,
 ) -> Path:
-    """Write frames to a browser-playable MP4 (H.264).
+    """Write RGB frames to a browser-playable MP4 (H.264).
 
     Strategy (in priority order):
     1. imageio-ffmpeg — writes H.264 directly via bundled ffmpeg
@@ -444,24 +542,24 @@ def _write_browser_compatible_video(
     3. OpenCV H.264 — only works if system ffmpeg backend is compiled in
     4. OpenCV mp4v + ffmpeg re-encode — write mp4v then re-encode
     5. OpenCV mp4v fallback — browsers can't play but file is valid
+
+    Input frames are in RGB order.
     """
 
-    # Strategy 1: imageio-ffmpeg
+    # Strategy 1: imageio-ffmpeg (accepts RGB directly)
     try:
         import imageio.v3 as iio
         h264_path = video_path.with_suffix(".mp4")
         with iio.imopen(str(h264_path), "w", plugin="pyav") as writer:
             writer.init_video_stream("libx264", fps=fps)
             for frame in frames:
-                # imageio expects RGB
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                writer.write_frame(rgb)
+                writer.write_frame(frame)
         if h264_path.exists() and h264_path.stat().st_size > 0:
             return h264_path
     except Exception:
         pass
 
-    # Strategy 2: PyAV
+    # Strategy 2: PyAV (accepts RGB directly)
     try:
         import av as _av
         h264_path = video_path.with_suffix(".mp4")
@@ -472,8 +570,7 @@ def _write_browser_compatible_video(
         stream.pix_fmt = "yuv420p"
         stream.options = {"preset": "fast"}
         for frame in frames:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            av_frame = _av.VideoFrame.from_ndarray(rgb, format="rgb24")
+            av_frame = _av.VideoFrame.from_ndarray(frame, format="rgb24")
             for packet in stream.encode(av_frame):
                 container.mux(packet)
         for packet in stream.encode():
@@ -484,7 +581,7 @@ def _write_browser_compatible_video(
     except Exception:
         pass
 
-    # Strategy 3: OpenCV H.264
+    # Strategy 3: OpenCV H.264 (needs BGR)
     h264_path = video_path.with_suffix(".mp4")
     for codec in ("avc1", "x264", "H264"):
         try:
@@ -492,7 +589,7 @@ def _write_browser_compatible_video(
             writer = cv2.VideoWriter(str(h264_path), fourcc, fps, (w, h))
             if writer.isOpened():
                 for f in frames:
-                    writer.write(f)
+                    writer.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
                 writer.release()
                 if h264_path.exists() and h264_path.stat().st_size > 0:
                     return h264_path
@@ -500,11 +597,11 @@ def _write_browser_compatible_video(
         except Exception:
             continue
 
-    # Strategy 4: OpenCV mp4v + ffmpeg re-encode
+    # Strategy 4: OpenCV mp4v + ffmpeg re-encode (needs BGR)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(video_path), fourcc, fps, (w, h))
     for f in frames:
-        writer.write(f)
+        writer.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
     writer.release()
 
     return _reencode_h264(video_path)

@@ -449,12 +449,19 @@ def _load_physical_ai_av_sdk(config: AppConfig, num_samples: int) -> list:
             print(f"  ⏭️  Skipping clip (no video) — {skipped} skipped so far")
             continue
 
-        # Download egomotion
+        # Download egomotion and extract trajectory
         try:
             ds.download_clip_features(clip_id, features=["egomotion"])
             ego = ds.get_clip_feature(clip_id, "egomotion")
             sample["egomotion"] = ego
-            print("  Egomotion: loaded")
+            # Extract trajectory waypoints from egomotion
+            ego_xyz = _extract_ego_xyz_from_egomotion(ego)
+            if ego_xyz is not None:
+                sample["ego_history_xyz"] = ego_xyz
+                sample["trajectory"] = ego_xyz[:, :2]  # x,y for BEV plot
+                print(f"  Egomotion: loaded ({len(ego_xyz)} waypoints, shape {ego_xyz.shape})")
+            else:
+                print("  Egomotion: loaded (no xyz extracted — see diagnostics)")
         except Exception as e:
             print(f"  Egomotion: {e}")
 
@@ -679,8 +686,109 @@ def _extract_video_frames(video_reader, max_frames: int = 40) -> list[np.ndarray
 
 
 
+def _extract_ego_xyz_from_egomotion(ego) -> np.ndarray | None:
+    """Extract x,y,z ego trajectory from an egomotion object.
+
+    Returns an (N, 3) float64 array of [x, y, z] positions, or None.
+    The model expects this as ``sample["ego_history_xyz"]``.
+
+    Egomotion may be a DataFrame, dict of arrays, structured array,
+    or custom SDK object with various column naming conventions.
+    """
+    try:
+        ego_type = type(ego).__name__
+        print(f"  Egomotion type: {ego_type}")
+
+        df = None
+        if isinstance(ego, pd.DataFrame):
+            df = ego
+        elif hasattr(ego, 'to_pandas'):
+            df = ego.to_pandas()
+        elif hasattr(ego, 'columns'):
+            df = pd.DataFrame(ego)
+        elif isinstance(ego, dict):
+            print(f"  Egomotion keys: {list(ego.keys())[:20]}")
+            df = pd.DataFrame(ego)
+        elif isinstance(ego, np.ndarray):
+            print(f"  Egomotion shape: {ego.shape}, dtype: {ego.dtype}")
+            if ego.ndim == 2:
+                if ego.shape[1] >= 3:
+                    return ego[:, :3].astype(np.float64)
+                elif ego.shape[1] == 2:
+                    z = np.zeros((ego.shape[0], 1))
+                    return np.hstack([ego[:, :2], z]).astype(np.float64)
+            return None
+        else:
+            attrs = [a for a in dir(ego) if not a.startswith('_')]
+            print(f"  Egomotion attrs: {attrs[:20]}")
+            # Try accessing as attribute-based object
+            for x_attr, y_attr, z_attr in [
+                ('x', 'y', 'z'), ('position_x', 'position_y', 'position_z'),
+                ('tx', 'ty', 'tz'),
+            ]:
+                if hasattr(ego, x_attr) and hasattr(ego, y_attr):
+                    x = np.array(getattr(ego, x_attr))
+                    y = np.array(getattr(ego, y_attr))
+                    z = np.array(getattr(ego, z_attr)) if hasattr(ego, z_attr) else np.zeros_like(x)
+                    return np.stack([x, y, z], axis=1).astype(np.float64)
+            return None
+
+        if df is not None:
+            print(f"  Egomotion columns: {list(df.columns)}")
+            print(f"  Egomotion rows: {len(df)}")
+
+            # Try common xyz column naming patterns
+            for x_col, y_col, z_col in [
+                ('x', 'y', 'z'),
+                ('position_x', 'position_y', 'position_z'),
+                ('pos_x', 'pos_y', 'pos_z'),
+                ('tx', 'ty', 'tz'),
+                ('translation_x', 'translation_y', 'translation_z'),
+            ]:
+                if x_col in df.columns and y_col in df.columns:
+                    x = df[x_col].values.astype(np.float64)
+                    y = df[y_col].values.astype(np.float64)
+                    z = df[z_col].values.astype(np.float64) if z_col in df.columns else np.zeros_like(x)
+                    print(f"  Using columns '{x_col}', '{y_col}', '{z_col}' for ego_history_xyz")
+                    return np.stack([x, y, z], axis=1)
+
+            # Try columns containing position hints
+            cols_lower = {c.lower(): c for c in df.columns}
+            x_cands = [c for c in cols_lower if 'x' in c and ('pos' in c or 'trans' in c)]
+            y_cands = [c for c in cols_lower if 'y' in c and ('pos' in c or 'trans' in c)]
+            z_cands = [c for c in cols_lower if 'z' in c and ('pos' in c or 'trans' in c)]
+            if x_cands and y_cands:
+                xc = cols_lower[x_cands[0]]
+                yc = cols_lower[y_cands[0]]
+                x = df[xc].values.astype(np.float64)
+                y = df[yc].values.astype(np.float64)
+                if z_cands:
+                    zc = cols_lower[z_cands[0]]
+                    z = df[zc].values.astype(np.float64)
+                else:
+                    z = np.zeros_like(x)
+                print(f"  Using columns '{xc}', '{yc}' for ego_history_xyz")
+                return np.stack([x, y, z], axis=1)
+
+            # Fallback: first 2-3 numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if len(numeric_cols) >= 3:
+                print(f"  Fallback: using numeric columns {numeric_cols[:3]} for ego_history_xyz")
+                return df[numeric_cols[:3]].values.astype(np.float64)
+            elif len(numeric_cols) >= 2:
+                print(f"  Fallback: using numeric columns {numeric_cols[:2]} + zeros for z")
+                xy = df[numeric_cols[:2]].values.astype(np.float64)
+                z = np.zeros((len(xy), 1))
+                return np.hstack([xy, z])
+
+    except Exception as e:
+        print(f"  ego_history_xyz extraction error: {e}")
+
+    return None
+
+
 def _frame_to_numpy(frame) -> np.ndarray | None:
-    """Convert various frame types to a BGR numpy array."""
+    """Convert various frame types to an RGB numpy array."""
     if frame is None:
         return None
 
@@ -690,23 +798,22 @@ def _frame_to_numpy(frame) -> np.ndarray | None:
             return frame
         if frame.ndim == 2:
             import cv2
-            return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            return cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
         return frame
 
-    # PIL Image
+    # PIL Image — already RGB
     try:
         from PIL import Image
         if isinstance(frame, Image.Image):
-            import cv2
-            arr = np.array(frame)
-            return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR) if arr.ndim == 3 else arr
+            arr = np.array(frame.convert('RGB'))
+            return arr
     except ImportError:
         pass
 
     # PyAV VideoFrame
     try:
         if hasattr(frame, "to_ndarray"):
-            return frame.to_ndarray(format="bgr24")
+            return frame.to_ndarray(format="rgb24")
     except Exception:
         pass
 
