@@ -323,6 +323,9 @@ class InferenceEngine:
     def run_vqa(self, data_sample, question: str) -> dict:
         """Run Visual Question Answering (Alpamayo 1.5 only).
 
+        Uses the SDK helper to build a chat message with the question,
+        then generates text via the model's standard inference pipeline.
+
         Args:
             data_sample: A data sample with driving scene images.
             question: Natural language question about the scene.
@@ -336,12 +339,60 @@ class InferenceEngine:
             raise RuntimeError("Model not loaded. Call .load() first.")
 
         print(f"Running VQA: {question}")
-        result = self.model.generate_text(data_sample, question=question)
+
+        from alpamayo1_5 import helper
+
+        # Build chat messages with the question
+        clip_id = data_sample.get("clip_id")
+        if clip_id and data_sample.get("source") == "physical_ai_av_sdk":
+            # SDK sample — use load_physical_aiavdataset for model-ready data
+            from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+            data = load_physical_aiavdataset(clip_id)
+            messages = helper.create_message(
+                frames=data["image_frames"].flatten(0, 1),
+                camera_indices=data["camera_indices"],
+                question=question,
+            )
+        else:
+            # Fallback: try to build messages from images in the sample
+            images = data_sample.get("images", [])
+            if not images and "camera_front_wide_120fov" in data_sample:
+                images = data_sample["camera_front_wide_120fov"]
+            messages = helper.create_message(
+                frames=images,
+                question=question,
+            )
+
+        # Tokenize
+        processor = helper.get_processor(self.model.tokenizer)
+        inputs = processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+
+        # Generate text
+        import torch
+        inputs = helper.to_device(inputs, "cuda")
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=512,
+                do_sample=False,
+            )
+
+        # Decode — skip input tokens
+        input_len = inputs["input_ids"].shape[1]
+        answer = self.model.tokenizer.decode(
+            output_ids[0][input_len:], skip_special_tokens=True,
+        ).strip()
 
         return {
             "model": MODEL_INFO[self.model_key]["name"],
             "question": question,
-            "answer": result.get("text", ""),
+            "answer": answer,
             "timestamp": datetime.now().isoformat(),
         }
 

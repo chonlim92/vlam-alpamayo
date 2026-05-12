@@ -81,9 +81,11 @@ def render_result_video(
     # Build annotated frames
     annotated = []
     total = len(frames)
-    reasoning_lines = _wrap_text(reasoning_text, max_chars=80)
-    # Scroll reasoning text across frames
-    lines_per_frame = max(1, len(reasoning_lines) // max(total, 1))
+    reasoning_lines = _wrap_text(reasoning_text, max_chars=90)
+    # Calculate time per frame (assume fps)
+    total_duration = total / fps if fps > 0 else total
+    # Streaming: progressively reveal lines as video plays
+    total_lines = len(reasoning_lines)
 
     for idx, frame in enumerate(frames):
         # Work in RGB
@@ -106,10 +108,16 @@ def render_result_video(
             # Per-frame trajectory info (top-left)
             _draw_frame_trajectory_info(canvas, wps, idx, total, metrics=traj_metrics)
 
-        # ── Compact CoC text (bottom, max 2 lines) ──────────────────────
-        visible_start = min(idx * lines_per_frame, max(len(reasoning_lines) - 2, 0))
-        visible_lines = reasoning_lines[visible_start:visible_start + 2]
-        _draw_compact_text(canvas, visible_lines, model_name)
+        # ── CoC reasoning log (bottom, streaming) ────────────────────────
+        time_s = idx / fps if fps > 0 else idx
+        # Reveal lines proportionally to frame progress
+        lines_revealed = max(1, int((idx + 1) / total * total_lines)) if total > 0 else total_lines
+        # Show last N visible lines (log-style, most recent at bottom)
+        max_visible = 4
+        end_line = min(lines_revealed, total_lines)
+        start_line = max(0, end_line - max_visible)
+        visible_lines = reasoning_lines[start_line:end_line]
+        _draw_streaming_log(canvas, visible_lines, model_name, time_s)
 
         # ── Timeline bar (very bottom) ───────────────────────────────────
         _draw_timeline(canvas, idx, total)
@@ -501,11 +509,18 @@ def _draw_text_overlay(canvas: np.ndarray, lines: list[str], model_name: str) ->
 
 
 def _draw_compact_text(canvas: np.ndarray, lines: list[str], model_name: str) -> None:
-    """Draw a compact CoC text bar at the bottom (max 2 lines, low intrusion)."""
+    """Draw a compact CoC text bar at the bottom (legacy, redirects to streaming)."""
+    _draw_streaming_log(canvas, lines, model_name, 0.0)
+
+
+def _draw_streaming_log(
+    canvas: np.ndarray, lines: list[str], model_name: str, time_s: float,
+) -> None:
+    """Draw CoC reasoning as a streaming log with timestamp at the bottom."""
     h, w = canvas.shape[:2]
     font_scale = max(0.4, min(0.55, w / 1800))
     line_h = int(22 * font_scale / 0.4)
-    panel_h = (len(lines) + 1) * line_h + 8
+    panel_h = (len(lines) + 1) * line_h + 10
     y_start = h - panel_h - 8  # above the timeline bar
 
     # Semi-transparent panel
@@ -513,19 +528,23 @@ def _draw_compact_text(canvas: np.ndarray, lines: list[str], model_name: str) ->
     cv2.rectangle(overlay, (0, y_start), (w, h - 6), _TEXT_BG, -1)
     cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
 
-    # Model tag (small)
+    # Header: model name + timestamp
+    header = f"[{model_name}] CoC @ {time_s:.1f}s"
     cv2.putText(
-        canvas, f"[{model_name}] CoC:",
+        canvas, header,
         (10, y_start + line_h),
         cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (100, 200, 255), 1, cv2.LINE_AA,
     )
 
-    # Text lines
+    # Log lines (streaming, most recent at bottom)
     for i, line in enumerate(lines):
         y = y_start + (i + 1) * line_h + line_h
+        # Older lines slightly dimmer
+        alpha = 0.6 + 0.4 * (i / max(len(lines) - 1, 1)) if len(lines) > 1 else 1.0
+        color = (int(220 * alpha), int(220 * alpha), int(220 * alpha))
         cv2.putText(
             canvas, line, (10, y),
-            cv2.FONT_HERSHEY_SIMPLEX, font_scale, _TEXT_FG, 1, cv2.LINE_AA,
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 1, cv2.LINE_AA,
         )
 
 
