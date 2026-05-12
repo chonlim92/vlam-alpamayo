@@ -47,8 +47,8 @@ def authenticate_hf(token: str) -> None:
     """Authenticate with Hugging Face using the provided token."""
     if not token:
         raise ValueError(
-            "Hugging Face token is required. Set HUGGINGFACE_API_TOKEN in config/.env "
-            "or set HF_TOKEN environment variable."
+            "Hugging Face token is required. Copy config/.env.sample to config/.env "
+            "and set HUGGINGFACE_API_TOKEN, or set HF_TOKEN environment variable."
         )
     login(token=token)
 

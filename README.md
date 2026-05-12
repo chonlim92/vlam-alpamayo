@@ -98,11 +98,19 @@ If you skip this, the app defaults to PyTorch's built-in SDPA attention (configu
 
 ### 6. Configure your Hugging Face token
 
-Edit `config/.env` and set your token:
+Copy the sample config and set your token:
+
+```bash
+cp config/.env.sample config/.env
+```
+
+Then edit `config/.env`:
 
 ```
 HUGGINGFACE_API_TOKEN=hf_your_token_here
 ```
+
+> **Note:** `config/.env` is git-ignored. Only `config/.env.sample` (with placeholder values) is tracked.
 
 Or set it as an environment variable:
 
@@ -166,7 +174,8 @@ For full usage details, see [docs/usage.md](docs/usage.md).
 ```
 vlam-alpamayo/
 ├── config/
-│   └── .env                  # Configuration (HF token, model settings)
+│   ├── .env.sample           # Configuration template (tracked in git)
+│   └── .env                  # Your local config (git-ignored)
 ├── docs/
 │   ├── models.md             # Model comparison & technical details
 │   ├── datasets.md           # Dataset documentation
@@ -190,7 +199,7 @@ vlam-alpamayo/
 
 ## Configuration
 
-All settings are in `config/.env`. Environment variables override file values.
+Copy `config/.env.sample` to `config/.env` and edit. Environment variables override file values.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -211,12 +220,12 @@ All settings are in `config/.env`. Environment variables override file values.
 ### CUDA out-of-memory
 
 - Ensure your GPU has ≥ 24 GB VRAM
-- Reduce `NUM_TRAJ_SAMPLES` in `config/.env`
+- Reduce `NUM_TRAJ_SAMPLES` in your `config/.env`
 - Close other GPU-intensive applications
 
 ### Flash Attention build errors
 
-If `flash-attn` fails to install, use SDPA instead (the default in `config/.env`):
+If `flash-attn` fails to install, use SDPA instead (the default in `config/.env.sample`):
 
 ```
 ATTN_IMPLEMENTATION=sdpa
@@ -260,6 +269,6 @@ The model weights are ~22 GB. On a 100 MB/s connection, expect ~2.5 minutes. Wei
 | **OpenCV (cv2)** | Video encoding (MP4), frame compositing, BEV trajectory overlay, and text rendering |
 | **NumPy** | Numerical operations for trajectory processing, coordinate transforms, and visualization |
 | **argparse** | CLI framework with subcommands (`run`, `vqa`, `gui`, `info`), dataset/model selection |
-| **python-dotenv** | Configuration management via `config/.env` with environment variable overrides |
+| **python-dotenv** | Configuration management via `config/.env` (from `.env.sample` template) with environment variable overrides |
 | **ffmpeg** | Optional H.264 re-encoding for browser-compatible video playback |
 | **Git / GitHub** | Version control and collaborative development |

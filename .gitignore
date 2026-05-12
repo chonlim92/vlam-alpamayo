@@ -9,7 +9,8 @@ __pycache__/
 venv/
 env/
 
-# Environment variables (keep template, ignore local overrides)
+# Environment variables (track .env.sample template, ignore real .env)
+!config/.env.sample
 config/.env.local
 config/.env
 .env

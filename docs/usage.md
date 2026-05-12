@@ -113,7 +113,7 @@ Results are saved as JSON files in the `output/` directory:
 
 ## Configuration
 
-All settings can be configured via `config/.env`:
+Copy `config/.env.sample` to `config/.env` and configure:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -127,4 +127,4 @@ All settings can be configured via `config/.env`:
 | `GUI_HOST` | `127.0.0.1` | GUI server host |
 | `GUI_PORT` | `7860` | GUI server port |
 
-Environment variables override `config/.env` values.
+`config/.env` is git-ignored (your real token stays local). Environment variables override file values.

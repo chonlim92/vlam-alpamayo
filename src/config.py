@@ -21,8 +21,11 @@ class AppConfig:
 
 
 def load_config() -> AppConfig:
-    """Load configuration from config/.env file and environment variables."""
-    # Look for .env in config/ relative to project root
+    """Load configuration from config/.env file and environment variables.
+
+    Looks for config/.env (copy from config/.env.sample).
+    Environment variables override .env values.
+    """
     project_root = Path(__file__).parent.parent
     env_path = project_root / "config" / ".env"
 
@@ -30,7 +33,7 @@ def load_config() -> AppConfig:
         load_dotenv(env_path)
 
     token = os.getenv("HUGGINGFACE_API_TOKEN", "")
-    if not token or token == "your_token_here":
+    if not token or token in ("your_token_here", "<your-HF-Token>"):
         token = os.getenv("HF_TOKEN", "")
 
     return AppConfig(
