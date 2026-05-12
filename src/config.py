@@ -41,7 +41,7 @@ def load_config() -> AppConfig:
         default_model=os.getenv("DEFAULT_MODEL", "alpamayo-1.5"),
         device=os.getenv("DEVICE", "cuda"),
         dtype=os.getenv("DTYPE", "bfloat16"),
-        attn_implementation=os.getenv("ATTN_IMPLEMENTATION", "sdpa"),
+        attn_implementation=os.getenv("ATTN_IMPLEMENTATION", "eager"),
         num_traj_samples=int(os.getenv("NUM_TRAJ_SAMPLES", "1")),
         output_dir=os.getenv("OUTPUT_DIR", "output"),
         gui_host=os.getenv("GUI_HOST", "127.0.0.1"),

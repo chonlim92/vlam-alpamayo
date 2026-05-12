@@ -8,162 +8,305 @@ from src.data_loader import get_dataset_info, load_sample_data, DATASETS, DATASE
 from src.inference import InferenceEngine
 from src.visualization import render_result_video, render_trajectory_plot
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── Custom CSS — Dark Professional Theme ──────────────────────────────────────
 CUSTOM_CSS = """
-/* Header */
+/* ── Global overrides ────────────────────────────────────── */
+body, .gradio-container {
+    background: #0f1117 !important;
+    color: #e2e8f0 !important;
+}
+.gradio-container {
+    max-width: 1400px !important;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
 .header-container {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    background: linear-gradient(135deg, #0a1628 0%, #122240 40%, #1a3a5c 100%);
     border-radius: 16px;
-    padding: 32px 40px;
-    margin-bottom: 24px;
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    padding: 36px 44px;
+    margin-bottom: 28px;
+    border: 1px solid rgba(118,185,0,0.2);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 60px rgba(118,185,0,0.05);
+    position: relative;
+    overflow: hidden;
+}
+.header-container::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(118,185,0,0.08) 0%, transparent 70%);
+    pointer-events: none;
 }
 .header-container h1 {
     color: #ffffff !important;
-    font-size: 2.2em !important;
-    font-weight: 700 !important;
-    margin-bottom: 4px !important;
+    font-size: 2.4em !important;
+    font-weight: 800 !important;
+    margin-bottom: 6px !important;
     letter-spacing: -0.5px;
 }
-.header-container p {
-    color: #94a3b8 !important;
+.header-container .subtitle {
+    color: #8b9dc3 !important;
     font-size: 1.05em !important;
-    margin: 0 !important;
+    margin: 0 0 18px !important;
+    line-height: 1.5;
 }
 .header-badges {
     display: flex;
-    gap: 12px;
-    margin-top: 16px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 .header-badge {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 20px;
-    padding: 4px 14px;
-    color: #e2e8f0;
-    font-size: 0.82em;
+    padding: 5px 16px;
+    color: #c8d6e5;
+    font-size: 0.8em;
     font-weight: 500;
+    backdrop-filter: blur(4px);
 }
 .header-badge-green {
-    background: rgba(34,197,94,0.15);
-    border-color: rgba(34,197,94,0.3);
-    color: #86efac;
+    background: rgba(118,185,0,0.15);
+    border-color: rgba(118,185,0,0.35);
+    color: #a3d977;
+}
+.header-badge-nvidia {
+    background: rgba(118,185,0,0.08);
+    border-color: rgba(118,185,0,0.2);
+    color: #76b900;
+    font-weight: 700;
 }
 
-/* Section panels */
-.panel-section {
-    background: #fafbfc;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 20px 24px;
-}
-.dark .panel-section {
-    background: #1e293b;
-    border-color: #334155;
+/* ── Panels & blocks ─────────────────────────────────────── */
+.block, .gr-block, .gr-box, .gr-panel,
+div[class*="block"], div[class*="panel"] {
+    background: #161b22 !important;
+    border-color: #21262d !important;
+    border-radius: 12px !important;
 }
 
-/* Section headings */
+/* ── Section headings ────────────────────────────────────── */
 .section-title {
-    font-size: 0.78em !important;
+    font-size: 0.72em !important;
     font-weight: 700 !important;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: #64748b !important;
-    margin-bottom: 12px !important;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #e2e8f0;
-}
-.dark .section-title {
-    color: #94a3b8 !important;
-    border-bottom-color: #334155;
+    letter-spacing: 1.5px;
+    color: #76b900 !important;
+    margin-bottom: 14px !important;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #21262d;
 }
 
-/* Status boxes */
-.status-ready {
-    border-left: 4px solid #22c55e !important;
+/* ── Inputs ──────────────────────────────────────────────── */
+input, textarea, select, .gr-input, .gr-dropdown {
+    background: #0d1117 !important;
+    border-color: #30363d !important;
+    color: #e6edf3 !important;
+    border-radius: 8px !important;
 }
-.status-idle {
-    border-left: 4px solid #94a3b8 !important;
+input:focus, textarea:focus, select:focus {
+    border-color: #76b900 !important;
+    box-shadow: 0 0 0 2px rgba(118,185,0,0.15) !important;
+}
+label, .gr-label {
+    color: #8b949e !important;
+    font-weight: 600 !important;
+    font-size: 0.88em !important;
 }
 
-/* Run button */
+/* ── Status textboxes ────────────────────────────────────── */
+.status-idle textarea {
+    border-left: 3px solid #30363d !important;
+    background: #0d1117 !important;
+    color: #8b949e !important;
+}
+.status-loaded textarea {
+    border-left: 3px solid #76b900 !important;
+    background: #0d1117 !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
 .run-btn {
     background: linear-gradient(135deg, #76b900 0%, #5a9e00 100%) !important;
     border: none !important;
+    color: #fff !important;
     font-weight: 700 !important;
     font-size: 1.05em !important;
     letter-spacing: 0.5px;
     border-radius: 10px !important;
-    padding: 12px 0 !important;
+    padding: 14px 0 !important;
     transition: all 0.2s ease !important;
-    box-shadow: 0 4px 14px rgba(118,185,0,0.3) !important;
+    box-shadow: 0 4px 20px rgba(118,185,0,0.25) !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 .run-btn:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 20px rgba(118,185,0,0.4) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 30px rgba(118,185,0,0.35) !important;
+    background: linear-gradient(135deg, #84d100 0%, #66b300 100%) !important;
+}
+.secondary-btn {
+    background: #21262d !important;
+    border: 1px solid #30363d !important;
+    color: #c9d1d9 !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease !important;
+}
+.secondary-btn:hover {
+    background: #30363d !important;
+    border-color: #484f58 !important;
 }
 
-/* Output tabs */
+/* ── Tabs ────────────────────────────────────────────────── */
+.main-tabs button, .output-tabs button {
+    background: transparent !important;
+    color: #8b949e !important;
+    font-weight: 600 !important;
+    font-size: 0.92em !important;
+    padding: 10px 22px !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.15s ease !important;
+}
+.main-tabs button.selected, .output-tabs button.selected {
+    color: #76b900 !important;
+    border-bottom: 2px solid #76b900 !important;
+    background: rgba(118,185,0,0.05) !important;
+}
+.main-tabs button:hover, .output-tabs button:hover {
+    color: #c9d1d9 !important;
+    background: rgba(255,255,255,0.03) !important;
+}
+
+/* ── Output areas ────────────────────────────────────────── */
 .output-tabs {
-    border: 1px solid #e5e7eb;
+    border: 1px solid #21262d;
     border-radius: 12px;
     overflow: hidden;
+    background: #0d1117 !important;
 }
-.dark .output-tabs {
-    border-color: #334155;
-}
-
-/* Info cards */
-.info-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 12px;
-    transition: box-shadow 0.2s ease;
-}
-.info-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-}
-.dark .info-card {
-    background: #1e293b;
-    border-color: #334155;
-}
-.dark .info-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+.output-description {
+    color: #6e7681 !important;
+    font-size: 0.82em !important;
+    margin-top: 8px;
 }
 
-/* Footer */
-.footer-container {
-    text-align: center;
-    padding: 16px 0 8px;
-    color: #94a3b8;
-    font-size: 0.82em;
-    border-top: 1px solid #e5e7eb;
-    margin-top: 24px;
+/* ── VQA info banner ─────────────────────────────────────── */
+.vqa-info {
+    background: linear-gradient(135deg, #0d1f3c, #122a4a);
+    border: 1px solid #1c3a5e;
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 18px;
 }
-.dark .footer-container {
-    border-top-color: #334155;
+.vqa-info strong {
+    color: #58a6ff;
+}
+.vqa-info p {
+    color: #8b9dc3;
+    margin: 6px 0 0;
+    font-size: 0.92em;
 }
 
-/* VQA chat-style */
+/* ── VQA answer ──────────────────────────────────────────── */
 .vqa-answer-box textarea {
     font-size: 1.02em !important;
     line-height: 1.7 !important;
+    background: #0d1117 !important;
+    color: #e6edf3 !important;
 }
 
-/* Tabs styling */
-.main-tabs > .tab-nav > button {
-    font-weight: 600 !important;
-    font-size: 0.95em !important;
-    padding: 10px 20px !important;
+/* ── Tables in Reference tab ─────────────────────────────── */
+table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+}
+table th {
+    background: #161b22 !important;
+    color: #76b900 !important;
+    font-weight: 700 !important;
+    font-size: 0.85em !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 16px !important;
+    border-bottom: 2px solid #21262d !important;
+}
+table td {
+    padding: 10px 16px !important;
+    border-bottom: 1px solid #21262d !important;
+    color: #c9d1d9 !important;
+    font-size: 0.9em;
+}
+table tr:hover td {
+    background: rgba(118,185,0,0.03) !important;
+}
+table a {
+    color: #58a6ff !important;
 }
 
-/* Compact sliders */
+/* ── Sliders ─────────────────────────────────────────────── */
 .compact-slider input[type=range] {
-    height: 6px !important;
+    height: 4px !important;
+    accent-color: #76b900 !important;
+}
+.compact-slider .progress {
+    background: #76b900 !important;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.footer-container {
+    text-align: center;
+    padding: 20px 0 10px;
+    color: #484f58;
+    font-size: 0.82em;
+    border-top: 1px solid #21262d;
+    margin-top: 28px;
+}
+.footer-container a {
+    color: #76b900 !important;
+    text-decoration: none;
+}
+.footer-container a:hover {
+    text-decoration: underline;
+}
+
+/* ── Markdown in dark mode ───────────────────────────────── */
+.prose, .markdown-text, .gr-markdown {
+    color: #c9d1d9 !important;
+}
+.prose h1, .prose h2, .prose h3 {
+    color: #e6edf3 !important;
+}
+.prose code {
+    background: #21262d !important;
+    color: #76b900 !important;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+/* ── Video player ────────────────────────────────────────── */
+video {
+    border-radius: 8px !important;
+    border: 1px solid #21262d !important;
 }
 """
 
@@ -180,21 +323,20 @@ def _get_config() -> AppConfig:
     return _config
 
 
-def load_model_action(model_key: str) -> tuple[str, str]:
-    """Load the selected model. Returns (status_text, status_class)."""
+def load_model_action(model_key: str) -> str:
+    """Load the selected model."""
     global _engine
     try:
         config = _get_config()
         _engine = InferenceEngine(config, model_key=model_key)
         _engine.load()
         info = MODEL_INFO[model_key]
-        status = (
+        return (
             f"✅  {info['name']} loaded successfully\n"
             f"     Backbone: {info['backbone']}\n"
             f"     Parameters: {info['params']}\n"
             f"     Features: {', '.join(info['features'])}"
         )
-        return status
     except Exception as e:
         return f"❌  Error: {e}"
 
@@ -220,9 +362,9 @@ def run_reasoning_action(
     global _engine, _data_samples
 
     if _engine is None:
-        return ("⚠️  No model loaded — use the Setup panel on the left to load a model first.", None, None)
+        return ("⚠️  No model loaded — use the Setup panel to load a model first.", None, None)
     if not _data_samples:
-        return ("⚠️  No data loaded — use the Setup panel on the left to load dataset samples first.", None, None)
+        return ("⚠️  No data loaded — use the Setup panel to load dataset samples first.", None, None)
 
     idx = int(sample_idx)
     if idx < 0 or idx >= len(_data_samples):
@@ -274,9 +416,9 @@ def run_vqa_action(sample_idx: int, question: str) -> str:
     """Run VQA on the selected sample (Alpamayo 1.5 only)."""
     global _engine, _data_samples
     if _engine is None:
-        return "⚠️  No model loaded. Please load Alpamayo 1.5 from the Reasoning tab first."
+        return "⚠️  No model loaded. Load Alpamayo 1.5 from the Reasoning tab first."
     if not _data_samples:
-        return "⚠️  No data loaded. Please load dataset samples from the Reasoning tab first."
+        return "⚠️  No data loaded. Load dataset samples from the Reasoning tab first."
 
     idx = int(sample_idx)
     if idx < 0 or idx >= len(_data_samples):
@@ -333,36 +475,8 @@ def _build_dataset_table() -> str:
     return "\n".join(lines)
 
 
-# ── Theme ─────────────────────────────────────────────────────────────────────
-alpamayo_theme = gr.themes.Base(
-    primary_hue=gr.themes.Color(
-        c50="#f0fdf4", c100="#dcfce7", c200="#bbf7d0", c300="#86efac",
-        c400="#4ade80", c500="#76b900", c600="#5a9e00", c700="#4d7c0f",
-        c800="#3f6212", c900="#365314", c950="#1a2e05",
-    ),
-    secondary_hue=gr.themes.colors.slate,
-        neutral_hue=gr.themes.colors.slate,
-        font=gr.themes.GoogleFont("Inter"),
-        font_mono=gr.themes.GoogleFont("JetBrains Mono"),
-    ).set(
-        body_background_fill="*neutral_50",
-        block_background_fill="white",
-        block_border_width="1px",
-        block_border_color="*neutral_200",
-        block_radius="12px",
-        block_shadow="0 1px 3px rgba(0,0,0,0.04)",
-        input_border_width="1px",
-        input_border_color="*neutral_300",
-        input_radius="8px",
-        button_primary_background_fill="*primary_500",
-        button_primary_text_color="white",
-        button_secondary_background_fill="*neutral_100",
-        button_secondary_border_color="*neutral_300",
-    )
-
-
 def build_gui() -> gr.Blocks:
-    """Build the professional Gradio interface."""
+    """Build the professional dark-themed Gradio interface."""
 
     with gr.Blocks(
         title="VLAM-Alpamayo — Autonomous Driving Reasoning",
@@ -372,14 +486,18 @@ def build_gui() -> gr.Blocks:
         gr.HTML("""
         <div class="header-container">
             <h1>🏔️ VLAM-Alpamayo</h1>
-            <p>Autonomous Driving Reasoning &amp; Trajectory Prediction
-               powered by NVIDIA Alpamayo Vision-Language-Action Models</p>
+            <p class="subtitle">
+                Autonomous Driving Reasoning &amp; Trajectory Prediction<br>
+                powered by NVIDIA Alpamayo Vision-Language-Action Models
+            </p>
             <div class="header-badges">
-                <span class="header-badge header-badge-green">● Ready</span>
+                <span class="header-badge header-badge-nvidia">NVIDIA</span>
+                <span class="header-badge header-badge-green">● Online</span>
                 <span class="header-badge">Alpamayo 1 &amp; 1.5</span>
                 <span class="header-badge">10.5B Parameters</span>
                 <span class="header-badge">14 Datasets</span>
                 <span class="header-badge">Chain-of-Causation</span>
+                <span class="header-badge">BEV Trajectory</span>
             </div>
         </div>
         """)
@@ -387,60 +505,60 @@ def build_gui() -> gr.Blocks:
         # ── Main Tabs ────────────────────────────────────────────────
         with gr.Tabs(elem_classes="main-tabs"):
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # TAB 1: Reasoning Inference
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            with gr.Tab("Reasoning", id="tab-reasoning"):
+            # ━━━ TAB 1: Reasoning Inference ━━━━━━━━━━━━━━━━━━━━━━━━━
+            with gr.Tab("🧠  Reasoning", id="tab-reasoning"):
                 with gr.Row(equal_height=False):
 
                     # ── Left: Setup Panel ─────────────────────────────
-                    with gr.Column(scale=1, min_width=320):
+                    with gr.Column(scale=1, min_width=340):
 
-                        # Model setup
-                        gr.HTML('<p class="section-title">Model</p>')
+                        gr.HTML('<p class="section-title">Model Configuration</p>')
                         model_select = gr.Dropdown(
                             choices=list(MODEL_IDS.keys()),
                             value="alpamayo-1.5",
-                            label="Select Model",
-                            info="Alpamayo 1.5 recommended — includes VQA & navigation",
+                            label="Model",
+                            info="v1.5 recommended — includes VQA, navigation & RL post-training",
                         )
                         load_model_btn = gr.Button(
                             "Load Model",
                             variant="primary",
                             size="sm",
+                            elem_classes="secondary-btn",
                         )
                         model_status = gr.Textbox(
-                            label="Status",
+                            label="Model Status",
                             interactive=False,
                             lines=4,
-                            value="No model loaded",
+                            value="⏳  No model loaded",
                             elem_classes="status-idle",
                         )
 
-                        # Dataset setup
-                        gr.HTML('<p class="section-title" style="margin-top:20px">Dataset</p>')
+                        gr.HTML('<p class="section-title" style="margin-top:24px">Dataset</p>')
                         dataset_select = gr.Dropdown(
                             choices=DATASET_KEYS,
                             value="physical-ai-av",
-                            label="Select Dataset",
-                            info="Streamed on-demand from Hugging Face",
+                            label="Dataset",
+                            info="Streamed on-demand from Hugging Face — no full download",
                         )
                         num_data_samples = gr.Slider(
                             minimum=1, maximum=10, value=1, step=1,
                             label="Samples to Load",
                             elem_classes="compact-slider",
                         )
-                        load_data_btn = gr.Button("Load Data", size="sm")
+                        load_data_btn = gr.Button(
+                            "Load Data",
+                            size="sm",
+                            elem_classes="secondary-btn",
+                        )
                         data_status = gr.Textbox(
-                            label="Status",
+                            label="Data Status",
                             interactive=False,
                             lines=2,
-                            value="No data loaded",
+                            value="⏳  No data loaded",
                             elem_classes="status-idle",
                         )
 
-                        # Inference params
-                        gr.HTML('<p class="section-title" style="margin-top:20px">Inference Parameters</p>')
+                        gr.HTML('<p class="section-title" style="margin-top:24px">Inference</p>')
                         sample_idx = gr.Slider(
                             minimum=0, maximum=9, value=0, step=1,
                             label="Sample Index",
@@ -449,7 +567,7 @@ def build_gui() -> gr.Blocks:
                         num_traj = gr.Slider(
                             minimum=1, maximum=16, value=1, step=1,
                             label="Trajectory Samples",
-                            info="More samples = better coverage, higher VRAM",
+                            info="More samples → better coverage, higher VRAM usage",
                             elem_classes="compact-slider",
                         )
 
@@ -462,37 +580,37 @@ def build_gui() -> gr.Blocks:
 
                     # ── Right: Results Panel ──────────────────────────
                     with gr.Column(scale=2):
-                        gr.HTML('<p class="section-title">Results</p>')
+                        gr.HTML('<p class="section-title">Output</p>')
 
                         with gr.Tabs(elem_classes="output-tabs"):
-                            with gr.Tab("Video Output", id="out-video"):
+                            with gr.Tab("📹  Video", id="out-video"):
                                 result_video = gr.Video(
                                     label="Annotated Driving Video",
                                     interactive=False,
                                     autoplay=True,
-                                    height=480,
+                                    height=500,
                                 )
-                                gr.Markdown(
-                                    "<small>Multi-camera composited view with BEV trajectory overlay, "
-                                    "reasoning text, and timeline bar.</small>"
+                                gr.HTML(
+                                    '<p class="output-description">Multi-camera composite '
+                                    'with BEV trajectory overlay, reasoning text & timeline.</p>'
                                 )
 
-                            with gr.Tab("Trajectory", id="out-traj"):
+                            with gr.Tab("🗺️  Trajectory", id="out-traj"):
                                 result_traj_img = gr.Image(
-                                    label="Bird's-Eye-View Trajectory Plot",
+                                    label="Bird's-Eye-View Trajectory",
                                     interactive=False,
-                                    height=480,
+                                    height=500,
                                 )
-                                gr.Markdown(
-                                    "<small>Predicted future trajectory (6.4s, 64 waypoints @ 10 Hz) "
-                                    "in ego-vehicle BEV coordinates.</small>"
+                                gr.HTML(
+                                    '<p class="output-description">Predicted 6.4s future trajectory '
+                                    '(64 waypoints @ 10 Hz) in ego-vehicle BEV coordinates.</p>'
                                 )
 
-                            with gr.Tab("Reasoning Trace", id="out-text"):
+                            with gr.Tab("📝  Reasoning Trace", id="out-text"):
                                 result_output = gr.Textbox(
                                     label="Chain-of-Causation Output",
                                     interactive=False,
-                                    lines=24,
+                                    lines=26,
                                 )
 
                 # Wire events
@@ -512,25 +630,19 @@ def build_gui() -> gr.Blocks:
                     outputs=[result_output, result_video, result_traj_img],
                 )
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # TAB 2: Visual Question Answering
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            with gr.Tab("Visual QA", id="tab-vqa"):
+            # ━━━ TAB 2: Visual QA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            with gr.Tab("❓  Visual QA", id="tab-vqa"):
                 gr.HTML("""
-                <div style="background:linear-gradient(135deg,#eff6ff,#f0f9ff);
-                     border:1px solid #bfdbfe; border-radius:10px;
-                     padding:16px 20px; margin-bottom:16px;">
-                    <strong style="color:#1e40af">ℹ️  Visual Question Answering</strong>
-                    <p style="color:#1e3a5f; margin:6px 0 0; font-size:0.92em">
-                        Ask natural-language questions about a loaded driving scene.
-                        Requires <strong>Alpamayo 1.5</strong> — load it from the
-                        Reasoning tab first.
-                    </p>
+                <div class="vqa-info">
+                    <strong>ℹ️  Visual Question Answering</strong>
+                    <p>Ask natural-language questions about a loaded driving scene.
+                       Requires <strong>Alpamayo 1.5</strong> — load it from the
+                       Reasoning tab first.</p>
                 </div>
                 """)
 
                 with gr.Row():
-                    with gr.Column(scale=1, min_width=280):
+                    with gr.Column(scale=1, min_width=300):
                         gr.HTML('<p class="section-title">Input</p>')
                         vqa_sample_idx = gr.Slider(
                             minimum=0, maximum=9, value=0, step=1,
@@ -550,11 +662,11 @@ def build_gui() -> gr.Blocks:
                         )
 
                     with gr.Column(scale=2):
-                        gr.HTML('<p class="section-title">Answer</p>')
+                        gr.HTML('<p class="section-title">Response</p>')
                         vqa_output = gr.Textbox(
-                            label="Model Response",
+                            label="Model Answer",
                             interactive=False,
-                            lines=14,
+                            lines=16,
                             elem_classes="vqa-answer-box",
                         )
 
@@ -564,25 +676,21 @@ def build_gui() -> gr.Blocks:
                     outputs=[vqa_output],
                 )
 
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # TAB 3: Models & Datasets Reference
-            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            with gr.Tab("Reference", id="tab-info"):
-                with gr.Row():
-                    with gr.Column():
-                        gr.HTML('<p class="section-title">Model Comparison</p>')
-                        gr.Markdown(_build_model_info_table())
+            # ━━━ TAB 3: Reference ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            with gr.Tab("📋  Reference", id="tab-info"):
+                gr.HTML('<p class="section-title">Model Comparison</p>')
+                gr.Markdown(_build_model_info_table())
 
-                gr.HTML('<p class="section-title" style="margin-top:24px">Supported Datasets (14)</p>')
+                gr.HTML('<p class="section-title" style="margin-top:28px">Supported Datasets (14)</p>')
                 gr.Markdown(_build_dataset_table())
 
         # ── Footer ───────────────────────────────────────────────────
         gr.HTML("""
         <div class="footer-container">
             VLAM-Alpamayo &nbsp;·&nbsp; Built with
-            <a href="https://www.gradio.app" target="_blank" style="color:#76b900">Gradio</a>
+            <a href="https://www.gradio.app" target="_blank">Gradio</a>
             &nbsp;·&nbsp; Powered by
-            <a href="https://huggingface.co/nvidia/Alpamayo-1.5-10B" target="_blank" style="color:#76b900">NVIDIA Alpamayo</a>
+            <a href="https://huggingface.co/nvidia/Alpamayo-1.5-10B" target="_blank">NVIDIA Alpamayo</a>
             &nbsp;·&nbsp; Author: Chong Kiat Lim
         </div>
         """)
@@ -603,7 +711,6 @@ def launch_gui(config: AppConfig | None = None, share: bool = False):
         server_name=_config.gui_host,
         server_port=_config.gui_port,
         share=share,
-        theme=alpamayo_theme,
         css=CUSTOM_CSS,
     )
 

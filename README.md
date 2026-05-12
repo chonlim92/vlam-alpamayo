@@ -39,12 +39,19 @@ This project supports **14 driving datasets** streamed on-demand from Hugging Fa
 
 ### Hugging Face Access
 
-You **must** request access to these gated datasets before using them (accept the license on each page):
+You **must** request access to these gated resources before using them (accept the license on each page):
 
-1. [nvidia/PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (primary dataset)
-2. [nvidia/PhysicalAI-Autonomous-Vehicles-NuRec](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec) (neural-reconstructed scenes)
+**Backbone models (gated):**
 
-The model weights are openly available (no access request needed):
+1. [nvidia/Cosmos-Reason2-8B](https://huggingface.co/nvidia/Cosmos-Reason2-8B) (backbone for Alpamayo 1.5)
+2. [nvidia/Cosmos-Reason-8B](https://huggingface.co/nvidia/Cosmos-Reason-8B) (backbone for Alpamayo 1)
+
+**Datasets (gated):**
+
+3. [nvidia/PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) (primary dataset)
+4. [nvidia/PhysicalAI-Autonomous-Vehicles-NuRec](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec) (neural-reconstructed scenes)
+
+The Alpamayo model weights are openly available (no access request needed):
 
 - [nvidia/Alpamayo-R1-10B](https://huggingface.co/nvidia/Alpamayo-R1-10B) (Alpamayo 1)
 - [nvidia/Alpamayo-1.5-10B](https://huggingface.co/nvidia/Alpamayo-1.5-10B) (Alpamayo 1.5)
@@ -230,7 +237,7 @@ Copy `config/.env.sample` to `config/.env` and edit. Environment variables overr
 | `DEFAULT_MODEL` | `alpamayo-1.5` | Default model (`alpamayo-1` or `alpamayo-1.5`) |
 | `DEVICE` | `cuda` | PyTorch device |
 | `DTYPE` | `bfloat16` | Model precision |
-| `ATTN_IMPLEMENTATION` | `sdpa` | `flash_attention_2` or `sdpa` |
+| `ATTN_IMPLEMENTATION` | `eager` | `flash_attention_2` or `eager` |
 | `NUM_TRAJ_SAMPLES` | `1` | Trajectory samples per inference |
 | `OUTPUT_DIR` | `output` | Result output directory |
 | `GUI_HOST` | `127.0.0.1` | GUI server host |
