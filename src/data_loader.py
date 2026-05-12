@@ -721,6 +721,52 @@ def _extract_ego_xyz_from_egomotion(ego) -> np.ndarray | None:
         else:
             attrs = [a for a in dir(ego) if not a.startswith('_')]
             print(f"  Egomotion attrs: {attrs[:20]}")
+
+            # Handle Interpolator objects (physical_ai_av SDK)
+            if hasattr(ego, 'values'):
+                values = ego.values
+                vtype = getattr(ego, 'value_type', None)
+                print(f"  Egomotion value_type: {vtype}, values type: {type(values).__name__}")
+                if isinstance(values, np.ndarray):
+                    print(f"  Egomotion values shape: {values.shape}, dtype: {values.dtype}")
+                    if values.ndim == 2 and values.shape[1] >= 3:
+                        return values[:, :3].astype(np.float64)
+                    elif values.ndim == 2 and values.shape[1] == 2:
+                        z = np.zeros((values.shape[0], 1))
+                        return np.hstack([values, z]).astype(np.float64)
+                    elif values.ndim == 1:
+                        # Might be structured array or flat — log for debugging
+                        print(f"  Egomotion values (1D): first 3 = {values[:3]}")
+                elif isinstance(values, (list, tuple)) and len(values) > 0:
+                    # List of poses/transforms — try to extract translation
+                    first = values[0]
+                    print(f"  Egomotion values[0] type: {type(first).__name__}")
+                    if isinstance(first, np.ndarray):
+                        arr = np.array(values)
+                        print(f"  Egomotion values array shape: {arr.shape}")
+                        if arr.ndim == 2 and arr.shape[1] >= 3:
+                            return arr[:, :3].astype(np.float64)
+                        elif arr.ndim == 3 and arr.shape[1] == 4 and arr.shape[2] == 4:
+                            # 4x4 transformation matrices — translation is [:3, 3]
+                            translations = arr[:, :3, 3].astype(np.float64)
+                            print(f"  Extracted translations from 4x4 matrices: {translations.shape}")
+                            return translations
+                    elif hasattr(first, 'translation'):
+                        # Pose objects with .translation attribute
+                        xyz = []
+                        for v in values:
+                            t = v.translation
+                            if isinstance(t, np.ndarray):
+                                xyz.append(t[:3])
+                            elif hasattr(t, 'x'):
+                                xyz.append([t.x, t.y, getattr(t, 'z', 0)])
+                        if xyz:
+                            return np.array(xyz, dtype=np.float64)
+                    elif isinstance(first, (list, tuple)):
+                        arr = np.array(values, dtype=np.float64)
+                        if arr.ndim == 2 and arr.shape[1] >= 3:
+                            return arr[:, :3]
+
             # Try accessing as attribute-based object
             for x_attr, y_attr, z_attr in [
                 ('x', 'y', 'z'), ('position_x', 'position_y', 'position_z'),
