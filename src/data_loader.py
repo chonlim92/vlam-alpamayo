@@ -178,13 +178,22 @@ DATASETS = {
 DATASET_KEYS = list(DATASETS.keys())
 
 
-def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num_samples: int = 1):
+def load_sample_data(
+    config: AppConfig,
+    dataset_key: str = "physical-ai-av",
+    num_samples: int = 1,
+    data_mode: str = "auto",
+):
     """Load sample data from the selected dataset.
 
     Args:
         config: Application configuration (needs HF token).
         dataset_key: Key from DATASETS registry.
         num_samples: Number of samples to load.
+        data_mode: Loading mode for physical-ai-av:
+            - ``"video"`` — always use SDK to download camera video clips.
+            - ``"parquet"`` — load text-only CoC annotations from parquet.
+            - ``"auto"`` — use the dataset’s configured loader.
 
     Returns:
         List of data samples.
@@ -196,6 +205,14 @@ def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num
     login(token=config.huggingface_token)
 
     loader = ds_info["loader"]
+
+    # Override loader for physical-ai-av based on data_mode
+    if dataset_key == "physical-ai-av" and data_mode != "auto":
+        if data_mode == "video":
+            loader = "physical_ai_av_sdk"
+        elif data_mode == "parquet":
+            loader = "hf_parquet"
+
     if loader == "unsupported":
         raise ValueError(
             f"Dataset '{dataset_key}' is not loadable in this app.\n"
@@ -204,8 +221,9 @@ def load_sample_data(config: AppConfig, dataset_key: str = "physical-ai-av", num
     if loader == "physical_ai_av_sdk":
         return _load_physical_ai_av_sdk(config, num_samples)
     if loader == "hf_parquet":
+        parquet_path = ds_info.get("parquet_path", "reasoning/ood_reasoning.parquet")
         return _load_hf_parquet(
-            ds_info["hf_id"], ds_info.get("parquet_path"), num_samples,
+            ds_info["hf_id"], parquet_path, num_samples,
         )
     # hf_streaming — normalize samples after loading
     raw_samples = _load_hf_streaming(ds_info["hf_id"], num_samples)

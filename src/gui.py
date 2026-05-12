@@ -190,13 +190,16 @@ def load_model_action(model_key: str) -> str:
         return f"❌  Error: {e}"
 
 
-def load_data_action(dataset_key: str, num_samples: int) -> str:
+def load_data_action(dataset_key: str, num_samples: int, data_mode: str) -> str:
     """Load sample data from the selected dataset."""
     global _data_samples
     try:
         config = _get_config()
         _data_samples = load_sample_data(
-            config, dataset_key=dataset_key, num_samples=int(num_samples),
+            config,
+            dataset_key=dataset_key,
+            num_samples=int(num_samples),
+            data_mode=data_mode,
         )
 
         # Build status summary
@@ -519,6 +522,12 @@ def build_gui() -> gr.Blocks:
                             label="Dataset",
                             info="Streamed on-demand from Hugging Face — no full download",
                         )
+                        data_mode = gr.Radio(
+                            choices=["video", "parquet"],
+                            value="video",
+                            label="Data Mode",
+                            info="Video: download camera clips via SDK | Parquet: text-only CoC annotations",
+                        )
                         num_data_samples = gr.Slider(
                             minimum=1, maximum=10, value=1, step=1,
                             label="Samples to Load",
@@ -602,7 +611,7 @@ def build_gui() -> gr.Blocks:
                 )
                 load_data_btn.click(
                     load_data_action,
-                    inputs=[dataset_select, num_data_samples],
+                    inputs=[dataset_select, num_data_samples, data_mode],
                     outputs=[data_status],
                 )
                 run_btn.click(
