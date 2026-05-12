@@ -612,187 +612,71 @@ def _filter_clips_with_feature(clip_idx, feature_name: str):
 
 
 def _extract_video_frames(video_reader, max_frames: int = 40) -> list[np.ndarray]:
-    """Extract numpy BGR frames from a SeekVideoReader or similar object."""
+    """Extract numpy BGR frames from a SeekVideoReader or similar object.
+
+    SeekVideoReader API (physical_ai_av SDK):
+      - timestamps: np.ndarray of PTS values
+      - decode_images_from_frame_indices(indices) -> list of PIL Images
+      - decode_images_from_timestamps(timestamps) -> list of PIL Images
+      - fps, container, stream, time_base, close()
+    """
     frames = []
 
-    # ── Debug: inspect the video_reader object ───────────────────────
-    vr_type = type(video_reader).__name__
-    vr_attrs = [a for a in dir(video_reader) if not a.startswith('_')]
-    print(f"  VideoReader type: {vr_type}")
-    print(f"  VideoReader attrs: {vr_attrs}")
-
-    # Try to log timestamps if available
+    # ── Strategy 1: decode_images_from_frame_indices (preferred) ─────
     try:
-        if hasattr(video_reader, 'timestamps'):
+        if hasattr(video_reader, 'decode_images_from_frame_indices'):
             ts = video_reader.timestamps
-            print(f"  Timestamps: {len(ts)} entries, range [{ts[0]:.3f} .. {ts[-1]:.3f}]")
-    except Exception as e:
-        print(f"  Timestamps access: {e}")
-
-    # ── Strategy 1: Seek by timestamp ────────────────────────────────
-    try:
-        if hasattr(video_reader, 'timestamps') and hasattr(video_reader, '__getitem__'):
-            timestamps = video_reader.timestamps
-            if len(timestamps) > 0:
-                step = max(1, len(timestamps) // max_frames)
-                for idx in range(0, len(timestamps), step):
-                    ts = timestamps[idx]
-                    frame = video_reader[ts]
-                    arr = _frame_to_numpy(frame)
-                    if arr is not None:
-                        frames.append(arr)
-                    if len(frames) >= max_frames:
-                        break
-                if frames:
-                    print(f"  Extracted {len(frames)} frames via timestamp seeking")
-                    return frames
-    except Exception as e:
-        print(f"  Timestamp seek failed: {e}")
-
-    # ── Strategy 2: Integer indexing ─────────────────────────────────
-    try:
-        length = len(video_reader)
-        print(f"  len(video_reader) = {length}")
-        if length > 0:
-            step = max(1, length // max_frames)
-            for i in range(0, length, step):
-                frame = video_reader[i]
-                arr = _frame_to_numpy(frame)
+            n_total = len(ts)
+            step = max(1, n_total // max_frames)
+            indices = list(range(0, n_total, step))[:max_frames]
+            images = video_reader.decode_images_from_frame_indices(indices)
+            for img in images:
+                arr = _frame_to_numpy(img)
                 if arr is not None:
                     frames.append(arr)
+            if frames:
+                print(f"  Extracted {len(frames)} frames via decode_images_from_frame_indices")
+                return frames
+    except Exception as e:
+        print(f"  decode_images_from_frame_indices failed: {e}")
+
+    # ── Strategy 2: decode_images_from_timestamps ────────────────────
+    try:
+        if hasattr(video_reader, 'decode_images_from_timestamps'):
+            ts = video_reader.timestamps
+            n_total = len(ts)
+            step = max(1, n_total // max_frames)
+            selected_ts = ts[::step][:max_frames]
+            images = video_reader.decode_images_from_timestamps(selected_ts)
+            for img in images:
+                arr = _frame_to_numpy(img)
+                if arr is not None:
+                    frames.append(arr)
+            if frames:
+                print(f"  Extracted {len(frames)} frames via decode_images_from_timestamps")
+                return frames
+    except Exception as e:
+        print(f"  decode_images_from_timestamps failed: {e}")
+
+    # ── Strategy 3: Decode directly from the underlying av container ─
+    try:
+        if hasattr(video_reader, 'container'):
+            container = video_reader.container
+            for av_frame in container.decode(video=0):
+                arr = av_frame.to_ndarray(format="bgr24")
+                frames.append(arr)
                 if len(frames) >= max_frames:
                     break
             if frames:
-                print(f"  Extracted {len(frames)} frames via integer indexing")
+                print(f"  Extracted {len(frames)} frames via container.decode()")
                 return frames
     except Exception as e:
-        print(f"  Integer indexing failed: {e}")
+        print(f"  container.decode() failed: {e}")
 
-    # ── Strategy 3: Iteration ────────────────────────────────────────
-    try:
-        for frame in video_reader:
-            arr = _frame_to_numpy(frame)
-            if arr is not None:
-                frames.append(arr)
-            if len(frames) >= max_frames:
-                break
-        if frames:
-            print(f"  Extracted {len(frames)} frames via iteration")
-            return frames
-    except Exception as e:
-        print(f"  Iteration failed: {e}")
-
-    # ── Strategy 4: .read() method ───────────────────────────────────
-    try:
-        if hasattr(video_reader, "read"):
-            while len(frames) < max_frames:
-                ret = video_reader.read()
-                if ret is None:
-                    break
-                arr = _frame_to_numpy(ret)
-                if arr is not None:
-                    frames.append(arr)
-            if frames:
-                print(f"  Extracted {len(frames)} frames via .read()")
-                return frames
-    except Exception as e:
-        print(f"  .read() failed: {e}")
-
-    # ── Strategy 5: Access raw video_data BytesIO and decode ─────────
-    try:
-        raw_data = None
-        for attr in ("video_data", "_video_data", "data", "_data", "buffer", "_buffer"):
-            if hasattr(video_reader, attr):
-                raw_data = getattr(video_reader, attr)
-                print(f"  Found raw data attr '{attr}': {type(raw_data).__name__}")
-                break
-
-        if raw_data is not None:
-            frames = _decode_video_bytes(raw_data, max_frames)
-            if frames:
-                print(f"  Extracted {len(frames)} frames from raw video bytes")
-                return frames
-    except Exception as e:
-        print(f"  Raw video data extraction failed: {e}")
-
-    # ── Strategy 6: Call with no args / get_frame ────────────────────
-    for method_name in ("get_frame", "decode", "get_frames", "to_numpy", "as_numpy"):
-        try:
-            if hasattr(video_reader, method_name):
-                result = getattr(video_reader, method_name)()
-                arr = _frame_to_numpy(result)
-                if arr is not None:
-                    frames.append(arr)
-                    print(f"  Extracted frame via .{method_name}()")
-                    return frames
-        except Exception:
-            continue
-
+    vr_type = type(video_reader).__name__
     print(f"  ❌ All extraction strategies failed for {vr_type}")
     return frames
 
-
-def _decode_video_bytes(raw_data, max_frames: int) -> list[np.ndarray]:
-    """Decode video frames from raw bytes/BytesIO using av or OpenCV."""
-    import io
-
-    # Get bytes
-    if hasattr(raw_data, 'read'):
-        raw_data.seek(0)
-        video_bytes = raw_data.read()
-        raw_data.seek(0)
-    elif isinstance(raw_data, (bytes, bytearray)):
-        video_bytes = raw_data
-    else:
-        return []
-
-    frames = []
-
-    # Try PyAV first
-    try:
-        import av as _av
-        container = _av.open(io.BytesIO(video_bytes))
-        for av_frame in container.decode(video=0):
-            arr = av_frame.to_ndarray(format="bgr24")
-            frames.append(arr)
-            if len(frames) >= max_frames:
-                break
-        container.close()
-        if frames:
-            return frames
-    except Exception as e:
-        print(f"  PyAV decode: {e}")
-
-    # Try OpenCV
-    try:
-        import cv2
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp.write(video_bytes)
-            tmp_path = tmp.name
-
-        cap = cv2.VideoCapture(tmp_path)
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        step = max(1, total // max_frames)
-        idx = 0
-        while cap.isOpened() and len(frames) < max_frames:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if idx % step == 0:
-                frames.append(frame)
-            idx += 1
-        cap.release()
-
-        import os
-        os.unlink(tmp_path)
-
-        if frames:
-            return frames
-    except Exception as e:
-        print(f"  OpenCV decode: {e}")
-
-    return frames
 
 
 def _frame_to_numpy(frame) -> np.ndarray | None:
