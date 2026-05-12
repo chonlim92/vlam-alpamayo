@@ -313,6 +313,7 @@ class InferenceEngine:
         return {
             "model": MODEL_INFO[self.model_key]["name"],
             "reasoning_trace": "\n".join(lines),
+            "model_reasoning": model_reasoning or "",
             "trajectory": trajectory,
             "timestamp": datetime.now().isoformat(),
             "source": "physical_ai_av_sdk",

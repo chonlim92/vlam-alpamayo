@@ -59,7 +59,8 @@ def render_result_video(
         frames = [cv2.resize(f, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4) for f in frames]
 
     h, w = frames[0].shape[:2]
-    reasoning_text = result.get("reasoning_trace", "")
+    # Prefer model_reasoning (pure CoC text) over reasoning_trace (which includes metadata tables)
+    reasoning_text = result.get("model_reasoning") or result.get("reasoning_trace", "")
     model_name = result.get("model", "Alpamayo")
 
     # Get trajectory from result or data sample
