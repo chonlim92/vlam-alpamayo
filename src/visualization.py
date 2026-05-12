@@ -97,18 +97,10 @@ def render_result_video(
             if wps.ndim == 3:
                 wps = wps[0]
             _draw_bev_minimap(canvas, wps, idx, total, gt_waypoints=gt_waypoints)
-            # Draw predicted trajectory on camera view (green)
-            _draw_trajectory_on_camera(canvas, wps, idx, total)
-            # Draw GT trajectory on camera view (orange) if available
-            if gt_waypoints is not None:
-                _draw_trajectory_on_camera(
-                    canvas, gt_waypoints, idx, total,
-                    color_start=(255, 140, 0), color_fade=0.5,
-                )
-            # Per-frame trajectory info (top-left) — streams ADE/FDE progressively
+            # Per-frame trajectory info (bottom-right) — streams ADE/FDE progressively
             _draw_frame_trajectory_info(canvas, wps, idx, total, gt_waypoints=gt_waypoints)
 
-        # ── CoC reasoning log (bottom, streaming) ────────────────────────
+        # ── CoC reasoning log (top-left, streaming) ──────────────────────
         time_s = idx / fps if fps > 0 else idx
         # Reveal lines proportionally to frame progress
         lines_revealed = max(1, int((idx + 1) / total * total_lines)) if total > 0 else total_lines
@@ -516,32 +508,31 @@ def _draw_compact_text(canvas: np.ndarray, lines: list[str], model_name: str) ->
 def _draw_streaming_log(
     canvas: np.ndarray, lines: list[str], model_name: str, time_s: float,
 ) -> None:
-    """Draw CoC reasoning as a streaming log with timestamp above the timeline."""
+    """Draw CoC reasoning as a streaming log at the top-left."""
     h, w = canvas.shape[:2]
     font_scale = max(0.4, min(0.55, w / 1800))
     line_h = int(22 * font_scale / 0.4)
-    timeline_h = 6
-    padding = 6  # gap between panel and timeline
     panel_h = (len(lines) + 1) * line_h + 10
-    panel_bottom = h - timeline_h - padding
-    y_start = panel_bottom - panel_h
+    margin = 8
+    # Limit panel width to ~60% of frame so it doesn't overlap BEV minimap
+    panel_w = min(int(w * 0.6), w - 20)
 
-    # Semi-transparent panel
+    # Semi-transparent panel at top-left
     overlay = canvas.copy()
-    cv2.rectangle(overlay, (0, y_start), (w, panel_bottom), _TEXT_BG, -1)
+    cv2.rectangle(overlay, (0, margin), (panel_w, margin + panel_h), _TEXT_BG, -1)
     cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
 
     # Header: model name + timestamp
     header = f"[{model_name}] CoC @ {time_s:.1f}s"
     cv2.putText(
         canvas, header,
-        (10, y_start + line_h),
+        (10, margin + line_h),
         cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (100, 200, 255), 1, cv2.LINE_AA,
     )
 
     # Log lines (streaming, most recent at bottom)
     for i, line in enumerate(lines):
-        y = y_start + (i + 1) * line_h + line_h
+        y = margin + (i + 1) * line_h + line_h
         # Older lines slightly dimmer
         alpha = 0.6 + 0.4 * (i / max(len(lines) - 1, 1)) if len(lines) > 1 else 1.0
         color = (int(220 * alpha), int(220 * alpha), int(220 * alpha))
@@ -567,7 +558,7 @@ def _draw_frame_trajectory_info(
     total_frames: int,
     gt_waypoints: np.ndarray | None = None,
 ) -> None:
-    """Draw per-frame trajectory position, speed, heading, and streaming ADE/FDE."""
+    """Draw per-frame trajectory info at bottom-right with streaming ADE/FDE."""
     h, w = canvas.shape[:2]
     if wps.ndim != 2 or wps.shape[0] < 2:
         return
@@ -593,7 +584,6 @@ def _draw_frame_trajectory_info(
     if gt_waypoints is not None and gt_waypoints.ndim == 2 and gt_waypoints.shape[0] >= 2:
         pred = wps[:, :2]
         gt = gt_waypoints[:, :2]
-        # Progressive: only compute up to current point
         cur_len = min(traj_idx + 1, len(pred), len(gt))
         if cur_len >= 1:
             errors = np.linalg.norm(gt[:cur_len] - pred[:cur_len], axis=1)
@@ -603,30 +593,35 @@ def _draw_frame_trajectory_info(
     has_metrics = ade_val is not None
     box_w, box_h = 280, 112 if has_metrics else 90
     margin = 15
+    timeline_h = 12  # stay above timeline bar
+    box_x = w - margin - box_w
+    box_y = h - margin - box_h - timeline_h
+
     overlay = canvas.copy()
-    cv2.rectangle(overlay, (margin, margin), (margin + box_w, margin + box_h), (0, 0, 0), -1)
+    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.6, canvas, 0.4, 0, canvas)
-    cv2.rectangle(canvas, (margin, margin), (margin + box_w, margin + box_h), (80, 80, 80), 1)
+    cv2.rectangle(canvas, (box_x, box_y), (box_x + box_w, box_y + box_h), (80, 80, 80), 1)
 
     font = cv2.FONT_HERSHEY_SIMPLEX
     fs = 0.45
     c = (200, 200, 200)
     g = (118, 185, 0)
-    y_pos = margin + 20
+    tx = box_x + 8
+    y_pos = box_y + 20
 
-    cv2.putText(canvas, f"Frame {frame_idx+1}/{total_frames}", (margin + 8, y_pos), font, fs, g, 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"Traj pt {traj_idx+1}/{len(wps)}", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Frame {frame_idx+1}/{total_frames}", (tx, y_pos), font, fs, g, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Traj pt {traj_idx+1}/{len(wps)}", (tx + 142, y_pos), font, fs, c, 1, cv2.LINE_AA)
     y_pos += 22
-    cv2.putText(canvas, f"Pos: ({x:.1f}, {y:.1f}) m", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Pos: ({x:.1f}, {y:.1f}) m", (tx, y_pos), font, fs, c, 1, cv2.LINE_AA)
     y_pos += 22
-    cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (margin + 8, y_pos), font, fs, c, 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (margin + 150, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Heading: {heading_deg:.1f} deg", (tx, y_pos), font, fs, c, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"Track: {total_dist:.1f}m total", (tx + 142, y_pos), font, fs, c, 1, cv2.LINE_AA)
 
     # Streaming ADE/FDE — values evolve as trajectory progresses
     if has_metrics:
         y_pos += 22
-        cv2.putText(canvas, f"ADE: {ade_val:.3f}m", (margin + 8, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
-        cv2.putText(canvas, f"FDE: {fde_val:.3f}m", (margin + 150, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"ADE: {ade_val:.3f}m", (tx, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"FDE: {fde_val:.3f}m", (tx + 142, y_pos), font, fs, (0, 200, 255), 1, cv2.LINE_AA)
 
 
 def _wrap_text(text: str, max_chars: int = 70) -> list[str]:
