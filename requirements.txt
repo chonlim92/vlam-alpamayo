@@ -1,4 +1,6 @@
-# Core dependencies
+# VLAM-Alpamayo — Core Dependencies
+# Install: pip install -r requirements.txt
+
 python-dotenv>=1.0.0
 torch>=2.8.0
 transformers>=4.57.1
@@ -7,10 +9,24 @@ datasets>=3.0.0
 gradio>=5.0.0
 opencv-python>=4.8.0
 numpy>=1.26.0
+accelerate>=1.12.0
+einops>=0.8.1
+pillow>=12.0.0
+torchvision>=0.23.0
+av>=16.0.1
+pandas>=2.3.3
+matplotlib>=3.10.0
+seaborn>=0.13.2
 
-# Alpamayo model packages
-alpamayo_r1 @ git+https://github.com/NVlabs/alpamayo.git
-alpamayo1_5 @ git+https://github.com/NVlabs/alpamayo1.5.git
-
-# Flash Attention 2 (optional — requires CUDA Toolkit with nvcc)
-# pip install flash-attn --no-build-isolation
+# ──────────────────────────────────────────────────────────────
+# After installing the above, run these separately:
+#
+#   pip install flash-attn --no-build-isolation
+#   pip install --no-deps git+https://github.com/NVlabs/alpamayo.git
+#   pip install --no-deps git+https://github.com/NVlabs/alpamayo1.5.git
+#
+# flash-attn needs torch at build time (--no-build-isolation).
+# Alpamayo packages are installed with --no-deps because their
+# pyproject.toml pulls in packages not on PyPI (physical-ai-av,
+# cosmos-rl). All actual runtime deps are covered above.
+# ──────────────────────────────────────────────────────────────

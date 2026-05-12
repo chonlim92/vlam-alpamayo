@@ -76,27 +76,22 @@ source .alpamayo_venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Install the Alpamayo model packages
+### 4. Install Flash Attention 2 and Alpamayo models
+
+These must be installed **after** the core dependencies:
 
 ```bash
-# Alpamayo 1
-pip install git+https://github.com/NVlabs/alpamayo.git
-
-# Alpamayo 1.5
-pip install git+https://github.com/NVlabs/alpamayo1.5.git
-```
-
-### 5. (Optional) Install Flash Attention 2
-
-Requires CUDA Toolkit with `nvcc` on your PATH:
-
-```bash
+# Flash Attention 2 (requires CUDA Toolkit with nvcc on PATH)
 pip install flash-attn --no-build-isolation
+
+# Alpamayo model packages (--no-deps avoids pulling non-PyPI transitive deps)
+pip install --no-deps git+https://github.com/NVlabs/alpamayo.git
+pip install --no-deps git+https://github.com/NVlabs/alpamayo1.5.git
 ```
 
-If you skip this, the app defaults to PyTorch's built-in SDPA attention (configured in `config/.env`).
+> **Note:** If `flash-attn` fails to build, the app falls back to PyTorch's SDPA attention (the default in `config/.env.sample`).
 
-### 6. Configure your Hugging Face token
+### 5. Configure your Hugging Face token
 
 Copy the sample config and set your token:
 
